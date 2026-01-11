@@ -24,6 +24,7 @@
 import { createFilePicker } from './src/index'
 import { getDefaultDbPath, openDatabase, getWatchedRoots } from './src/db'
 import { loadConfig } from './src/config'
+import { runInit } from './src/init'
 import { existsSync } from 'node:fs'
 
 // ============================================================================
@@ -223,6 +224,11 @@ async function cmdRefresh(args: string[], opts: OutputOptions): Promise<number> 
   }
 }
 
+async function cmdInit(): Promise<number> {
+  const result = await runInit(process.cwd())
+  return result.success ? EXIT_SUCCESS : EXIT_ERROR
+}
+
 async function cmdStatus(opts: OutputOptions): Promise<number> {
   const config = await loadConfig()
   const dbPath = getDefaultDbPath()
@@ -292,6 +298,7 @@ COMMANDS
   index <path>       Index a directory
   refresh <path>     Refresh an existing index
   status             Show index status and configuration
+  init               Install pickme hooks into Claude Code
 
 SEARCH OPTIONS
   -r, --root <path>  Project root for relative paths (default: cwd)
@@ -352,6 +359,8 @@ async function main(): Promise<number> {
         return await cmdRefresh(args, flags)
       case 'status':
         return await cmdStatus(flags)
+      case 'init':
+        return await cmdInit()
       default:
         error(`unknown command: ${command}`, flags)
         console.error(`Run '${NAME} --help' for usage.`)

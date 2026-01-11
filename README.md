@@ -71,9 +71,37 @@ patterns = [
 
 ## Claude Code Integration
 
-### 1. Set up the session-start hook
+### Quick Setup
 
-Add to your Claude Code settings (`~/.claude/settings.json`):
+Run the interactive installer:
+
+```bash
+pickme init
+```
+
+This will:
+1. Detect your Claude Code configuration (global and project-level)
+2. Show which hooks are already installed
+3. Let you choose where to install (global, project, or both)
+4. Create the hook script and update `settings.json`
+
+### Build the initial index
+
+```bash
+pickme index ~/Developer
+pickme index ~/.config
+```
+
+### Verify it works
+
+```bash
+pickme status
+pickme search "readme"
+```
+
+### Manual Setup (Alternative)
+
+If you prefer manual configuration, add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -92,27 +120,12 @@ Add to your Claude Code settings (`~/.claude/settings.json`):
 }
 ```
 
-Replace `/path/to/pickme` with where you cloned the repo (e.g., `~/Developer/galligan/pickme`).
-
-This refreshes the index and git frecency data when you start a Claude Code session. The hook runs in the background to avoid blocking startup.
-
-### 2. Build the initial index
-
-```bash
-pickme index ~/Developer
-pickme index ~/.config
-```
-
-### 4. Verify it works
-
-```bash
-pickme status
-pickme search "readme"
-```
-
 ## CLI Usage
 
 ```bash
+# Install hooks into Claude Code
+pickme init
+
 # Search for files
 pickme search "component"
 pickme search "@*.tsx" --limit 50
