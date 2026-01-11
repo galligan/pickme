@@ -15,7 +15,8 @@
   "dependencies": {
     "@inquirer/prompts": "^7.3.2",
     "ora": "^8.2.0",
-    "toml": "^3.0.0"
+    "toml": "^3.0.0",
+    "yoctocolors": "^2.1.2"
   },
   "devDependencies": {
     "@types/bun": "latest",

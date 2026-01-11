@@ -7,11 +7,18 @@
  * @module init
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+} from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import { checkbox, confirm } from '@inquirer/prompts'
+import { checkbox } from '@inquirer/prompts'
 import ora from 'ora'
+import { dim, green, red } from 'yoctocolors'
 
 // ============================================================================
 // Types
@@ -119,18 +126,16 @@ export function detectClaudeConfig(
   projectDir: string = process.cwd()
 ): ClaudeConfigStatus {
   let settingsDir: string
-  let hooksDir: string
 
   if (scope === 'global') {
     settingsDir = getClaudeConfigDir()
-    hooksDir = join(settingsDir, 'hooks')
   } else {
     settingsDir = join(projectDir, '.claude')
-    hooksDir = join(settingsDir, 'hooks')
   }
 
   const settingsPath = join(settingsDir, 'settings.json')
-  const hookScriptPath = join(hooksDir, 'file-picker.sh')
+  // Hook script goes directly in the claude config dir (not in hooks subdir)
+  const hookScriptPath = join(settingsDir, 'file-suggestion.sh')
   const exists = existsSync(settingsPath)
   const hookScriptExists = existsSync(hookScriptPath)
 
@@ -170,7 +175,9 @@ function checkForPickmeHook(settings: ClaudeSettings): boolean {
     for (const hook of hooks) {
       if (
         hook.type === 'command' &&
-        (hook.command.includes('file-picker.sh') || hook.command.includes('pickme'))
+        (hook.command.includes('file-suggestion.sh') ||
+          hook.command.includes('file-picker.sh') ||
+          hook.command.includes('pickme'))
       ) {
         return true
       }
@@ -185,7 +192,7 @@ function checkForPickmeHook(settings: ClaudeSettings): boolean {
 // ============================================================================
 
 /**
- * Generates the file-picker.sh hook script content.
+ * Generates the file-suggestion.sh hook script content.
  *
  * @param pickmeDir - Path to pickme installation
  * @returns Shell script content
@@ -193,58 +200,35 @@ function checkForPickmeHook(settings: ClaudeSettings): boolean {
 export function generateHookScript(pickmeDir: string): string {
   return `#!/bin/bash
 # pickme session-start hook
-# Installed by: pickme init
-#
-# This script runs the pickme session-start hook when Claude Code starts.
-# It refreshes the file index and git frecency data in the background.
-#
-# Exit codes:
-#   0 - Success (or pickme not found - graceful skip)
-#   1 - Reserved for fatal errors (currently unused)
+# Runs pickme session hook when Claude Code starts
 
-# Find pickme installation
 PICKME_DIR=""
 
-# First, check if pickme is on PATH
-if command -v pickme &> /dev/null; then
+# Check if pickme is on PATH
+if command -v pickme &>/dev/null; then
   PICKME_CMD="$(command -v pickme)"
   PICKME_DIR="$(dirname "$(dirname "$PICKME_CMD")")"
-  # Verify the hooks directory exists
-  if [ ! -d "$PICKME_DIR/hooks" ]; then
-    PICKME_DIR=""
-  fi
+  [[ ! -d "$PICKME_DIR/hooks" ]] && PICKME_DIR=""
 fi
 
-# Fallback: check known development location
-if [ -z "$PICKME_DIR" ] && [ -d "${pickmeDir}" ]; then
-  PICKME_DIR="${pickmeDir}"
-fi
+# Fallback: known dev location
+[[ -z "$PICKME_DIR" && -d "${pickmeDir}" ]] && PICKME_DIR="${pickmeDir}"
 
-# Fallback: check Homebrew locations
-if [ -z "$PICKME_DIR" ]; then
-  for brew_prefix in /opt/homebrew /usr/local; do
-    if [ -d "$brew_prefix/lib/node_modules/pickme/hooks" ]; then
-      PICKME_DIR="$brew_prefix/lib/node_modules/pickme"
-      break
-    fi
+# Fallback: Homebrew
+if [[ -z "$PICKME_DIR" ]]; then
+  for prefix in /opt/homebrew /usr/local; do
+    [[ -d "$prefix/lib/node_modules/pickme/hooks" ]] && PICKME_DIR="$prefix/lib/node_modules/pickme" && break
   done
 fi
 
-# If pickme not found, exit gracefully (not an error)
-if [ -z "$PICKME_DIR" ]; then
-  # pickme not installed, skip silently
-  exit 0
-fi
+# Exit silently if not found
+[[ -z "$PICKME_DIR" ]] && exit 0
 
 # Verify bun is available
-if ! command -v bun &> /dev/null; then
-  echo "[pickme] bun not found, skipping session hook" >&2
-  exit 0
-fi
+command -v bun &>/dev/null || exit 0
 
-# Run session-start hook in background to avoid blocking Claude startup
-nohup bun run "$PICKME_DIR/hooks/session-start.ts" > /dev/null 2>&1 &
-
+# Run in background
+nohup bun run "$PICKME_DIR/hooks/session-start.ts" >/dev/null 2>&1 &
 exit 0
 `
 }
@@ -252,6 +236,21 @@ exit 0
 // ============================================================================
 // Installation Logic
 // ============================================================================
+
+/**
+ * Backs up an existing file by renaming it to .bak
+ *
+ * @param filePath - Path to the file to back up
+ * @returns Whether backup was created
+ */
+function backupIfExists(filePath: string): boolean {
+  if (existsSync(filePath)) {
+    const backupPath = `${filePath}.bak`
+    renameSync(filePath, backupPath)
+    return true
+  }
+  return false
+}
 
 /**
  * Installs the pickme hook for a given scope.
@@ -263,16 +262,19 @@ exit 0
 export async function installHook(
   scope: InstallScope,
   projectDir: string = process.cwd()
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; backedUp?: boolean }> {
   const status = detectClaudeConfig(scope, projectDir)
   const pickmeDir = getPickmeDir()
 
   try {
-    // Create hooks directory if it doesn't exist
-    const hooksDir = dirname(status.hookScriptPath)
-    if (!existsSync(hooksDir)) {
-      mkdirSync(hooksDir, { recursive: true })
+    // Create config directory if it doesn't exist
+    const configDir = dirname(status.hookScriptPath)
+    if (!existsSync(configDir)) {
+      mkdirSync(configDir, { recursive: true })
     }
+
+    // Back up existing hook script
+    const backedUp = backupIfExists(status.hookScriptPath)
 
     // Write the hook script
     const scriptContent = generateHookScript(pickmeDir)
@@ -301,7 +303,7 @@ export async function installHook(
     // Write updated settings
     writeFileSync(status.settingsPath, JSON.stringify(settings, null, 2) + '\n')
 
-    return { success: true }
+    return { success: true, backedUp }
   } catch (err) {
     return {
       success: false,
@@ -313,7 +315,10 @@ export async function installHook(
 /**
  * Adds pickme hook to settings without duplicating.
  */
-function addHookToSettings(settings: ClaudeSettings, hookScriptPath: string): ClaudeSettings {
+function addHookToSettings(
+  settings: ClaudeSettings,
+  hookScriptPath: string
+): ClaudeSettings {
   // Initialize hooks object if needed
   if (!settings.hooks) {
     settings.hooks = {}
@@ -334,7 +339,9 @@ function addHookToSettings(settings: ClaudeSettings, hookScriptPath: string): Cl
     group.hooks?.some(
       (h) =>
         h.type === 'command' &&
-        (h.command.includes('file-picker.sh') || h.command.includes('pickme'))
+        (h.command.includes('file-suggestion.sh') ||
+          h.command.includes('file-picker.sh') ||
+          h.command.includes('pickme'))
     )
   )
 
@@ -363,7 +370,9 @@ function addHookToSettings(settings: ClaudeSettings, hookScriptPath: string): Cl
  * @param projectDir - Current project directory
  * @returns Init result
  */
-export async function runInit(projectDir: string = process.cwd()): Promise<InitResult> {
+export async function runInit(
+  projectDir: string = process.cwd()
+): Promise<InitResult> {
   const result: InitResult = {
     success: true,
     globalInstalled: false,
@@ -371,60 +380,61 @@ export async function runInit(projectDir: string = process.cwd()): Promise<InitR
     errors: [],
   }
 
-  console.log('\npickme init\n')
+  console.log('\nPickme Configuration\n')
 
-  // Detection phase with spinner
-  const detectSpinner = ora('Detecting Claude configuration...').start()
-
+  // Detection phase - instant, no spinner
   const globalStatus = detectClaudeConfig('global', projectDir)
   const projectStatus = detectClaudeConfig('project', projectDir)
 
-  detectSpinner.succeed('Configuration detected')
+  const globalInstalled =
+    globalStatus.hasPickmeHook || globalStatus.hookScriptExists
+  const projectInstalled =
+    projectStatus.hasPickmeHook || projectStatus.hookScriptExists
 
   // Display status
-  console.log('\nDetected Configuration:')
-  displayStatus('Global Claude config', globalStatus.settingsPath, globalStatus.exists)
-  displayStatus(
-    'Global pickme hook',
-    globalStatus.hookScriptPath,
-    globalStatus.hasPickmeHook || globalStatus.hookScriptExists,
-    globalStatus.hasPickmeHook ? 'installed' : undefined
+  displayConfigStatus('Global config', globalStatus.exists)
+  displayInstallStatus(
+    'Global install',
+    globalInstalled,
+    globalStatus.hookScriptPath
   )
-  displayStatus('Project config', projectStatus.settingsPath, projectStatus.exists)
-  displayStatus(
-    'Project pickme hook',
-    projectStatus.hookScriptPath,
-    projectStatus.hasPickmeHook || projectStatus.hookScriptExists,
-    projectStatus.hasPickmeHook ? 'installed' : undefined
+  console.log()
+  displayConfigStatus('Project config', projectStatus.exists)
+  displayInstallStatus(
+    'Project install',
+    projectInstalled,
+    projectStatus.hookScriptPath
   )
   console.log()
 
   // Build choices for installation
-  const choices: Array<{
+  type Choice = {
     name: string
     value: InstallScope
-    disabled: string | false
-  }> = []
+    disabled: boolean
+  }
 
-  const globalAlreadyInstalled = globalStatus.hasPickmeHook || globalStatus.hookScriptExists
-  const projectAlreadyInstalled = projectStatus.hasPickmeHook || projectStatus.hookScriptExists
-
-  choices.push({
-    name: `Global (~/.claude/settings.json)`,
-    value: 'global',
-    disabled: globalAlreadyInstalled ? 'already installed' : false,
-  })
-
-  choices.push({
-    name: `Project (./.claude/settings.json)`,
-    value: 'project',
-    disabled: projectAlreadyInstalled ? 'already installed' : false,
-  })
+  const choices: Choice[] = [
+    {
+      name: globalInstalled
+        ? dim(`${green('\u2714')} Global (already installed)`)
+        : 'Global',
+      value: 'global',
+      disabled: globalInstalled,
+    },
+    {
+      name: projectInstalled
+        ? dim(`${green('\u2714')} Project (already installed)`)
+        : 'Project',
+      value: 'project',
+      disabled: projectInstalled,
+    },
+  ]
 
   // Check if all options are disabled
-  const allDisabled = choices.every((c) => c.disabled !== false)
+  const allDisabled = choices.every((c) => c.disabled)
   if (allDisabled) {
-    console.log('pickme hooks are already installed in all locations.\n')
+    console.log('Pickme hooks are already installed in all locations.\n')
     return result
   }
 
@@ -432,9 +442,8 @@ export async function runInit(projectDir: string = process.cwd()): Promise<InitR
   let selectedScopes: InstallScope[] = []
   try {
     selectedScopes = await checkbox({
-      message: 'Where would you like to install pickme hooks?',
+      message: 'Install pickme?',
       choices,
-      required: true,
     })
   } catch (err) {
     // User cancelled (Ctrl+C)
@@ -451,61 +460,61 @@ export async function runInit(projectDir: string = process.cwd()): Promise<InitR
     return result
   }
 
-  // Confirm installation
-  const confirmInstall = await confirm({
-    message: `Install hooks in ${selectedScopes.length} location(s)?`,
-    default: true,
-  })
-
-  if (!confirmInstall) {
-    console.log('\nInstallation cancelled.\n')
-    return result
-  }
-
   console.log()
 
-  // Install in each selected scope
+  // Install in each selected scope with spinners
   for (const scope of selectedScopes) {
-    const scopeLabel = scope === 'global' ? 'global' : 'project'
-    const installSpinner = ora(`Installing ${scopeLabel} hook...`).start()
+    const scopeLabel = scope === 'global' ? 'Global' : 'Project'
+    const installSpinner = ora(`Installing ${scopeLabel.toLowerCase()}...`).start()
 
     const installResult = await installHook(scope, projectDir)
 
     if (installResult.success) {
-      installSpinner.succeed(`${scopeLabel} hook installed`)
+      let msg = `${scopeLabel} installed`
+      if (installResult.backedUp) {
+        msg += ' (previous version backed up)'
+      }
+      installSpinner.succeed(msg)
       if (scope === 'global') {
         result.globalInstalled = true
       } else {
         result.projectInstalled = true
       }
     } else {
-      installSpinner.fail(`Failed to install ${scopeLabel} hook: ${installResult.error}`)
+      installSpinner.fail(`Failed to install ${scopeLabel.toLowerCase()}: ${installResult.error}`)
       result.errors.push(installResult.error ?? 'Unknown error')
       result.success = false
     }
   }
 
-  // Show next steps
-  console.log('\n--- Next Steps ---')
-  console.log('The pickme session-start hook will run automatically when Claude Code starts.')
-  console.log('To manually run the hook: pickme session-start')
-  console.log('To check index status: pickme status\n')
+  console.log()
 
   return result
 }
 
 /**
- * Helper to display a status line with checkmark or X.
+ * Display config detection status line.
  */
-function displayStatus(
+function displayConfigStatus(label: string, detected: boolean): void {
+  if (detected) {
+    console.log(`${green('\u2714')} ${label} detected`)
+  } else {
+    console.log(`${red('\u2717')} ${label} not found`)
+  }
+}
+
+/**
+ * Display install status line.
+ */
+function displayInstallStatus(
   label: string,
-  path: string,
-  exists: boolean,
-  note?: string
+  installed: boolean,
+  path: string
 ): void {
-  const icon = exists ? '\x1b[32m+\x1b[0m' : '\x1b[31m-\x1b[0m'
-  const suffix = note ? ` (${note})` : exists ? '' : ' (not found)'
-  // Show relative path for display
   const displayPath = path.replace(homedir(), '~')
-  console.log(`  ${icon} ${label}: ${displayPath}${suffix}`)
+  if (installed) {
+    console.log(`${green('\u2714')} ${label} ${displayPath}`)
+  } else {
+    console.log(`${red('\u2717')} ${label} not found ${dim(displayPath)}`)
+  }
 }
