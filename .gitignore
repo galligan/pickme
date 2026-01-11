@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Bun
+bun.lock
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Scratch/temp files
+.scratch/
+
+# OS files
+.DS_Store
