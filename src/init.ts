@@ -18,7 +18,7 @@ import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import select from '@inquirer/select'
 import ora from 'ora'
-import { bold, cyan, dim } from 'yoctocolors'
+import { bold, cyan, dim, green } from 'yoctocolors'
 
 // ============================================================================
 // Types
@@ -370,11 +370,12 @@ function addHookToSettings(
  * Select theme with cyan pointer and custom styling.
  */
 const selectTheme = {
-  prefix: { idle: '?', done: '?' },
+  prefix: { idle: green('?'), done: green('?') },
   icon: { cursor: cyan('\u276F') }, // ❯ in cyan/teal
   style: {
     disabled: (text: string) => dim(text),
     highlight: (text: string) => text, // No special highlighting, pointer indicates selection
+    help: (text: string) => dim(text), // Dim the navigation hints
   },
 }
 
@@ -470,7 +471,7 @@ export async function runInit(
 
   // Header - bold title, dim subtitle
   console.log()
-  console.log(bold('Install Pickme file suggester for Claude'))
+  console.log(bold(`Install ${cyan('Pickme')} file suggester for Claude`))
   console.log(dim('\u2192 This will add .claude/file-suggester.sh'))
   console.log()
 
