@@ -18,7 +18,7 @@ import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import select from '@inquirer/select'
 import ora from 'ora'
-import { bold, cyan, dim, green } from 'yoctocolors'
+import { bold, cyan, dim, green, yellow } from 'yoctocolors'
 
 // ============================================================================
 // Types
@@ -375,7 +375,7 @@ const selectTheme = {
   style: {
     disabled: (text: string) => dim(text),
     highlight: (text: string) => text, // No special highlighting, pointer indicates selection
-    help: (text: string) => dim(text), // Dim the navigation hints
+    help: (text: string) => dim(text + ' • q quit'), // Dim hints + quit
   },
 }
 
@@ -471,8 +471,8 @@ export async function runInit(
 
   // Header - bold title, dim subtitle
   console.log()
-  console.log(bold(`Install ${cyan('Pickme')} file suggester for Claude`))
-  console.log(dim('\u2192 This will add .claude/file-suggester.sh'))
+  console.log(bold('Install Pickme file suggester for Claude'))
+  console.log(yellow('! This will add .claude/file-suggester.sh'))
   console.log()
 
   // Silent detection phase
