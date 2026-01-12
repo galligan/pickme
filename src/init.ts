@@ -16,9 +16,9 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import { checkbox } from '@inquirer/prompts'
+import select from '@inquirer/select'
 import ora from 'ora'
-import { dim, green, red } from 'yoctocolors'
+import { bold, dim, green, red } from 'yoctocolors'
 
 // ============================================================================
 // Types
@@ -365,6 +365,71 @@ function addHookToSettings(
 // ============================================================================
 
 /**
+ * Select theme with green ? prefix and custom styling.
+ */
+const selectTheme = {
+  prefix: { idle: green('?'), done: green('?') },
+  icon: { cursor: '\u276F' }, // ❯
+  style: {
+    disabled: (text: string) => dim(text),
+    highlight: (text: string) => text, // No special highlighting, just use ❯
+  },
+}
+
+/**
+ * Prompts user with select, supporting 'q' to quit.
+ * Returns null if user cancels.
+ */
+async function selectWithQuit<T>(config: {
+  message: string
+  choices: Array<{ name: string; value: T; disabled?: boolean | string }>
+}): Promise<T | null> {
+  // Set up 'q' key listener
+  const stdin = process.stdin
+  const wasRaw = stdin.isRaw
+  let cancelled = false
+  let selectPromise: (ReturnType<typeof select<T>>) | null = null
+
+  const onKeypress = (data: Buffer) => {
+    const key = data.toString()
+    if (key === 'q' || key === 'Q') {
+      cancelled = true
+      if (selectPromise) {
+        selectPromise.cancel()
+      }
+    }
+  }
+
+  stdin.on('data', onKeypress)
+
+  try {
+    selectPromise = select<T>({
+      ...config,
+      theme: selectTheme,
+    })
+    const result = await selectPromise
+    return result
+  } catch (err) {
+    // User cancelled (Ctrl+C or 'q')
+    if (
+      cancelled ||
+      (err instanceof Error &&
+        (err.message.includes('User force closed') ||
+          err.name === 'ExitPromptError'))
+    ) {
+      return null
+    }
+    throw err
+  } finally {
+    stdin.removeListener('data', onKeypress)
+    // Restore raw mode if it was changed
+    if (stdin.isRaw !== wasRaw && stdin.isTTY) {
+      stdin.setRawMode(wasRaw)
+    }
+  }
+}
+
+/**
  * Runs the interactive init command.
  *
  * @param projectDir - Current project directory
@@ -380,111 +445,157 @@ export async function runInit(
     errors: [],
   }
 
-  console.log('\nPickme Configuration\n')
+  // Header
+  console.log(`\n${bold('Set up Pickme')}\n`)
 
   // Detection phase - instant, no spinner
   const globalStatus = detectClaudeConfig('global', projectDir)
   const projectStatus = detectClaudeConfig('project', projectDir)
 
-  const globalInstalled =
-    globalStatus.hasPickmeHook || globalStatus.hookScriptExists
-  const projectInstalled =
-    projectStatus.hasPickmeHook || projectStatus.hookScriptExists
+  // Determine installation status
+  // "Fully installed" = script exists AND registered in settings.json
+  const globalFullyInstalled =
+    globalStatus.hasPickmeHook && globalStatus.hookScriptExists
+  const projectFullyInstalled =
+    projectStatus.hasPickmeHook && projectStatus.hookScriptExists
 
-  // Display status
-  displayConfigStatus('Global config', globalStatus.exists)
-  displayInstallStatus(
-    'Global install',
-    globalInstalled,
-    globalStatus.hookScriptPath
+  // "Partially installed" = script exists but NOT in settings.json (needs override confirmation)
+  const globalScriptOnly =
+    globalStatus.hookScriptExists && !globalStatus.hasPickmeHook
+  const projectScriptOnly =
+    projectStatus.hookScriptExists && !projectStatus.hasPickmeHook
+
+  // Display compact two-line status
+  displayCompactStatus(
+    globalStatus.exists || globalStatus.hookScriptExists,
+    globalFullyInstalled,
+    projectStatus.exists || projectStatus.hookScriptExists,
+    projectFullyInstalled
   )
   console.log()
-  displayConfigStatus('Project config', projectStatus.exists)
-  displayInstallStatus(
-    'Project install',
-    projectInstalled,
-    projectStatus.hookScriptPath
-  )
-  console.log()
 
-  // Build choices for installation
+  // Check if all options are fully installed
+  if (globalFullyInstalled && projectFullyInstalled) {
+    console.log('Pickme is already installed in all locations.\n')
+    return result
+  }
+
+  // Build choices - disabled if fully installed
   type Choice = {
     name: string
     value: InstallScope
-    disabled: boolean
+    disabled: boolean | string
   }
 
-  const choices: Choice[] = [
-    {
-      name: globalInstalled
-        ? dim(`${green('\u2714')} Global (already installed)`)
-        : 'Global',
+  const choices: Choice[] = []
+
+  if (globalFullyInstalled) {
+    choices.push({
+      name: 'Global (already installed)',
       value: 'global',
-      disabled: globalInstalled,
-    },
-    {
-      name: projectInstalled
-        ? dim(`${green('\u2714')} Project (already installed)`)
-        : 'Project',
+      disabled: true,
+    })
+  } else {
+    choices.push({
+      name: 'Global',
+      value: 'global',
+      disabled: false,
+    })
+  }
+
+  if (projectFullyInstalled) {
+    choices.push({
+      name: 'Project (already installed)',
       value: 'project',
-      disabled: projectInstalled,
-    },
-  ]
+      disabled: true,
+    })
+  } else {
+    choices.push({
+      name: 'Project',
+      value: 'project',
+      disabled: false,
+    })
+  }
 
   // Check if all options are disabled
-  const allDisabled = choices.every((c) => c.disabled)
+  const allDisabled = choices.every((c) => c.disabled !== false)
   if (allDisabled) {
-    console.log('Pickme hooks are already installed in all locations.\n')
+    console.log('Pickme is already installed in all locations.\n')
     return result
   }
 
   // Prompt for scope selection
-  let selectedScopes: InstallScope[] = []
-  try {
-    selectedScopes = await checkbox({
-      message: 'Install pickme?',
-      choices,
+  const selectedScope = await selectWithQuit<InstallScope>({
+    message: 'Install pickme to:',
+    choices,
+  })
+
+  if (selectedScope === null) {
+    console.log('\nInstallation cancelled.\n')
+    result.success = false
+    return result
+  }
+
+  // Check if we need override confirmation
+  const needsOverride =
+    (selectedScope === 'global' && globalScriptOnly) ||
+    (selectedScope === 'project' && projectScriptOnly)
+
+  if (needsOverride) {
+    const status =
+      selectedScope === 'global' ? globalStatus : projectStatus
+    const displayPath = status.hookScriptPath.replace(homedir(), '~')
+
+    const confirmed = await selectWithQuit<boolean>({
+      message: `Ok to override ${displayPath}?`,
+      choices: [
+        {
+          name: `Yes\n  ${dim('Current file will be saved as file-suggestion.sh.bak')}`,
+          value: true,
+          disabled: false,
+        },
+        {
+          name: 'No, cancel installation',
+          value: false,
+          disabled: false,
+        },
+      ],
     })
-  } catch (err) {
-    // User cancelled (Ctrl+C)
-    if (err instanceof Error && err.message.includes('User force closed')) {
+
+    if (confirmed === null || confirmed === false) {
       console.log('\nInstallation cancelled.\n')
       result.success = false
       return result
     }
-    throw err
-  }
-
-  if (selectedScopes.length === 0) {
-    console.log('\nNo scopes selected. Nothing to install.\n')
-    return result
   }
 
   console.log()
 
-  // Install in each selected scope with spinners
-  for (const scope of selectedScopes) {
-    const scopeLabel = scope === 'global' ? 'Global' : 'Project'
-    const installSpinner = ora(`Installing ${scopeLabel.toLowerCase()}...`).start()
+  // Install in selected scope with spinner
+  const scopeLabel = selectedScope === 'global' ? 'Global' : 'Project'
+  const installSpinner = ora(
+    `Installing ${scopeLabel.toLowerCase()}...`
+  ).start()
 
-    const installResult = await installHook(scope, projectDir)
+  const installResult = await installHook(selectedScope, projectDir)
 
-    if (installResult.success) {
-      let msg = `${scopeLabel} installed`
-      if (installResult.backedUp) {
-        msg += ' (previous version backed up)'
-      }
-      installSpinner.succeed(msg)
-      if (scope === 'global') {
-        result.globalInstalled = true
-      } else {
-        result.projectInstalled = true
-      }
-    } else {
-      installSpinner.fail(`Failed to install ${scopeLabel.toLowerCase()}: ${installResult.error}`)
-      result.errors.push(installResult.error ?? 'Unknown error')
-      result.success = false
+  if (installResult.success) {
+    let msg = `${scopeLabel} installed`
+    if (installResult.backedUp) {
+      msg += ' (previous version backed up)'
     }
+    installSpinner.succeed(msg)
+    if (selectedScope === 'global') {
+      result.globalInstalled = true
+    } else {
+      result.projectInstalled = true
+    }
+  } else {
+    installSpinner.fail(
+      `Failed to install ${scopeLabel.toLowerCase()}: ${installResult.error}`
+    )
+    result.errors.push(installResult.error ?? 'Unknown error')
+    result.success = false
   }
 
   console.log()
@@ -493,28 +604,30 @@ export async function runInit(
 }
 
 /**
- * Display config detection status line.
+ * Display compact two-line status.
+ *
+ * Format:
+ * Config file:       ✔ Global  ✘ Project
+ * Script installed:  ✘ Global  ✘ Project
  */
-function displayConfigStatus(label: string, detected: boolean): void {
-  if (detected) {
-    console.log(`${green('\u2714')} ${label} detected`)
-  } else {
-    console.log(`${red('\u2717')} ${label} not found`)
-  }
-}
-
-/**
- * Display install status line.
- */
-function displayInstallStatus(
-  label: string,
-  installed: boolean,
-  path: string
+function displayCompactStatus(
+  globalConfigExists: boolean,
+  globalInstalled: boolean,
+  projectConfigExists: boolean,
+  projectInstalled: boolean
 ): void {
-  const displayPath = path.replace(homedir(), '~')
-  if (installed) {
-    console.log(`${green('\u2714')} ${label} ${displayPath}`)
-  } else {
-    console.log(`${red('\u2717')} ${label} not found ${dim(displayPath)}`)
-  }
+  const check = green('\u2714') // ✔
+  const cross = red('\u2718') // ✘
+
+  const globalConfigIcon = globalConfigExists ? check : cross
+  const projectConfigIcon = projectConfigExists ? check : cross
+  const globalInstalledIcon = globalInstalled ? check : cross
+  const projectInstalledIcon = projectInstalled ? check : cross
+
+  console.log(
+    `Config file:       ${globalConfigIcon} Global  ${projectConfigIcon} Project`
+  )
+  console.log(
+    `Script installed:  ${globalInstalledIcon} Global  ${projectInstalledIcon} Project`
+  )
 }
