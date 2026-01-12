@@ -444,11 +444,12 @@ function buildChoiceName(
   path: string,
   isInstalled: boolean
 ): string {
-  const pathPart = dim(`(${path})`)
+  const fullPath = `${path}/file-suggester.sh`
+  const pathPart = dim(`(${fullPath})`)
   const baseName = `${label} ${pathPart}`
 
   if (isInstalled) {
-    return dim(`${label} (${path}) (installed)`)
+    return dim(`${label} (${fullPath}) (installed)`)
   }
   return baseName
 }
@@ -469,11 +470,9 @@ export async function runInit(
     errors: [],
   }
 
-  // Header - bold title, dim subtitle
+  // Header
   console.log()
   console.log(bold('Install Pickme file suggester for Claude'))
-  console.log(yellow('! This will add .claude/file-suggester.sh'))
-  console.log()
 
   // Silent detection phase
   const globalStatus = detectClaudeConfig('global', projectDir)
@@ -491,6 +490,19 @@ export async function runInit(
     globalStatus.hookScriptExists && !globalStatus.hasPickmeHook
   const projectScriptOnly =
     projectStatus.hookScriptExists && !projectStatus.hasPickmeHook
+
+  // Show warning if existing script found (not fully installed)
+  const hasExistingScript =
+    (globalStatus.hookScriptExists && !globalFullyInstalled) ||
+    (projectStatus.hookScriptExists && !projectFullyInstalled)
+
+  if (hasExistingScript) {
+    console.log()
+    console.log(yellow('\u2605 Existing file-suggester.sh found'))
+    console.log(yellow('  It will be renamed file-suggester.sh.bak'))
+  }
+
+  console.log()
 
   // Check if all options are fully installed
   if (globalFullyInstalled && projectFullyInstalled) {
