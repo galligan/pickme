@@ -18,7 +18,7 @@ import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import select from '@inquirer/select'
 import ora from 'ora'
-import { bold, dim, green, red } from 'yoctocolors'
+import { bold, cyan, dim } from 'yoctocolors'
 
 // ============================================================================
 // Types
@@ -135,7 +135,7 @@ export function detectClaudeConfig(
 
   const settingsPath = join(settingsDir, 'settings.json')
   // Hook script goes directly in the claude config dir (not in hooks subdir)
-  const hookScriptPath = join(settingsDir, 'file-suggestion.sh')
+  const hookScriptPath = join(settingsDir, 'file-suggester.sh')
   const exists = existsSync(settingsPath)
   const hookScriptExists = existsSync(hookScriptPath)
 
@@ -175,7 +175,8 @@ function checkForPickmeHook(settings: ClaudeSettings): boolean {
     for (const hook of hooks) {
       if (
         hook.type === 'command' &&
-        (hook.command.includes('file-suggestion.sh') ||
+        (hook.command.includes('file-suggester.sh') ||
+          hook.command.includes('file-suggestion.sh') ||
           hook.command.includes('file-picker.sh') ||
           hook.command.includes('pickme'))
       ) {
@@ -192,7 +193,7 @@ function checkForPickmeHook(settings: ClaudeSettings): boolean {
 // ============================================================================
 
 /**
- * Generates the file-suggestion.sh hook script content.
+ * Generates the file-suggester.sh hook script content.
  *
  * @param pickmeDir - Path to pickme installation
  * @returns Shell script content
@@ -339,7 +340,8 @@ function addHookToSettings(
     group.hooks?.some(
       (h) =>
         h.type === 'command' &&
-        (h.command.includes('file-suggestion.sh') ||
+        (h.command.includes('file-suggester.sh') ||
+          h.command.includes('file-suggestion.sh') ||
           h.command.includes('file-picker.sh') ||
           h.command.includes('pickme'))
     )
@@ -365,14 +367,14 @@ function addHookToSettings(
 // ============================================================================
 
 /**
- * Select theme with green ? prefix and custom styling.
+ * Select theme with cyan pointer and custom styling.
  */
 const selectTheme = {
-  prefix: { idle: green('?'), done: green('?') },
-  icon: { cursor: '\u276F' }, // ❯
+  prefix: { idle: '?', done: '?' },
+  icon: { cursor: cyan('\u276F') }, // ❯ in cyan/teal
   style: {
     disabled: (text: string) => dim(text),
-    highlight: (text: string) => text, // No special highlighting, just use ❯
+    highlight: (text: string) => text, // No special highlighting, pointer indicates selection
   },
 }
 
@@ -430,6 +432,27 @@ async function selectWithQuit<T>(config: {
 }
 
 /**
+ * Builds the choice name with proper styling.
+ *
+ * Format: "Globally (~/.claude)" or "Globally (~/.claude) (installed)"
+ * - Path is dim
+ * - Entire line is dim if installed
+ */
+function buildChoiceName(
+  label: string,
+  path: string,
+  isInstalled: boolean
+): string {
+  const pathPart = dim(`(${path})`)
+  const baseName = `${label} ${pathPart}`
+
+  if (isInstalled) {
+    return dim(`${label} (${path}) (installed)`)
+  }
+  return baseName
+}
+
+/**
  * Runs the interactive init command.
  *
  * @param projectDir - Current project directory
@@ -445,10 +468,13 @@ export async function runInit(
     errors: [],
   }
 
-  // Header
-  console.log(`\n${bold('Set up Pickme')}\n`)
+  // Header - bold title, dim subtitle
+  console.log()
+  console.log(bold('Install Pickme file suggester for Claude'))
+  console.log(dim('\u2192 This will add .claude/file-suggester.sh'))
+  console.log()
 
-  // Detection phase - instant, no spinner
+  // Silent detection phase
   const globalStatus = detectClaudeConfig('global', projectDir)
   const projectStatus = detectClaudeConfig('project', projectDir)
 
@@ -465,57 +491,32 @@ export async function runInit(
   const projectScriptOnly =
     projectStatus.hookScriptExists && !projectStatus.hasPickmeHook
 
-  // Display compact two-line status
-  displayCompactStatus(
-    globalStatus.exists || globalStatus.hookScriptExists,
-    globalFullyInstalled,
-    projectStatus.exists || projectStatus.hookScriptExists,
-    projectFullyInstalled
-  )
-  console.log()
-
   // Check if all options are fully installed
   if (globalFullyInstalled && projectFullyInstalled) {
     console.log('Pickme is already installed in all locations.\n')
     return result
   }
 
-  // Build choices - disabled if fully installed
+  // Build choices with styled names
+  // Note: "Project " has trailing space to align parentheses with "Globally"
   type Choice = {
     name: string
     value: InstallScope
     disabled: boolean | string
   }
 
-  const choices: Choice[] = []
-
-  if (globalFullyInstalled) {
-    choices.push({
-      name: 'Global (already installed)',
+  const choices: Choice[] = [
+    {
+      name: buildChoiceName('Globally', '~/.claude', globalFullyInstalled),
       value: 'global',
-      disabled: true,
-    })
-  } else {
-    choices.push({
-      name: 'Global',
-      value: 'global',
-      disabled: false,
-    })
-  }
-
-  if (projectFullyInstalled) {
-    choices.push({
-      name: 'Project (already installed)',
+      disabled: globalFullyInstalled,
+    },
+    {
+      name: buildChoiceName('Project ', './.claude', projectFullyInstalled),
       value: 'project',
-      disabled: true,
-    })
-  } else {
-    choices.push({
-      name: 'Project',
-      value: 'project',
-      disabled: false,
-    })
-  }
+      disabled: projectFullyInstalled,
+    },
+  ]
 
   // Check if all options are disabled
   const allDisabled = choices.every((c) => c.disabled !== false)
@@ -526,7 +527,7 @@ export async function runInit(
 
   // Prompt for scope selection
   const selectedScope = await selectWithQuit<InstallScope>({
-    message: 'Install pickme to:',
+    message: 'Install location:',
     choices,
   })
 
@@ -550,7 +551,7 @@ export async function runInit(
       message: `Ok to override ${displayPath}?`,
       choices: [
         {
-          name: `Yes\n  ${dim('Current file will be saved as file-suggestion.sh.bak')}`,
+          name: `Yes\n  ${dim('Current file will be saved as file-suggester.sh.bak')}`,
           value: true,
           disabled: false,
         },
@@ -601,33 +602,4 @@ export async function runInit(
   console.log()
 
   return result
-}
-
-/**
- * Display compact two-line status.
- *
- * Format:
- * Config file:       ✔ Global  ✘ Project
- * Script installed:  ✘ Global  ✘ Project
- */
-function displayCompactStatus(
-  globalConfigExists: boolean,
-  globalInstalled: boolean,
-  projectConfigExists: boolean,
-  projectInstalled: boolean
-): void {
-  const check = green('\u2714') // ✔
-  const cross = red('\u2718') // ✘
-
-  const globalConfigIcon = globalConfigExists ? check : cross
-  const projectConfigIcon = projectConfigExists ? check : cross
-  const globalInstalledIcon = globalInstalled ? check : cross
-  const projectInstalledIcon = projectInstalled ? check : cross
-
-  console.log(
-    `Config file:       ${globalConfigIcon} Global  ${projectConfigIcon} Project`
-  )
-  console.log(
-    `Script installed:  ${globalInstalledIcon} Global  ${projectInstalledIcon} Project`
-  )
 }
