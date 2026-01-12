@@ -1,6 +1,6 @@
 # pickme
 
-Fast file search with frecency-based ranking for Claude Code.
+An ultrafast `@file` suggester for Claude Code.
 
 ## Features
 
@@ -27,51 +27,7 @@ bun link
 
 This makes `pickme` available globally.
 
-## Configuration
-
-Create a config file at `~/.config/pickme/config.toml`:
-
-```toml
-# Directories to index
-[[roots]]
-path = "~/Developer"
-max_depth = 10
-
-[[roots]]
-path = "~/.config"
-max_depth = 5
-
-# Frecency scoring weights
-[frecency]
-commit_weight = 2.0      # Weight for commit frequency
-recency_weight = 1.5     # Weight for recent access
-decay_days = 30          # Half-life for recency decay
-
-# Priority patterns (boost these files in results)
-[priorities]
-patterns = [
-  "README.md",
-  "package.json",
-  "tsconfig.json",
-  "*.config.*"
-]
-boost = 1.5
-
-# Exclusions (in addition to .gitignore)
-[exclude]
-patterns = [
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  ".next",
-  "*.lock"
-]
-```
-
-## Claude Code Integration
-
-### Quick Setup
+## Quick Setup
 
 Run the interactive installer:
 
@@ -80,76 +36,15 @@ pickme init
 ```
 
 This will:
-1. Detect your Claude Code configuration (global and project-level)
-2. Show which hooks are already installed
-3. Let you choose where to install (global, project, or both)
-4. Create the hook script and update `settings.json`
 
-### Build the initial index
+1. Detect your Claude Code install path to place `file-suggester.sh` (global recommended, project optional)
+2. Back up any existing `file-suggester.sh` that exists
+3. Create the suggester script and optionally register hooks in `.claude/settings.json`
+4. **`@mention` files in Claude!** That's it.
 
-```bash
-pickme index ~/Developer
-pickme index ~/.config
-```
+> **Note:** Initial indexing takes ~50-200ms depending on codebase size. After that, searches are near-instant.
 
-### Verify it works
-
-```bash
-pickme status
-pickme search "readme"
-```
-
-### Manual Setup (Alternative)
-
-If you prefer manual configuration, add to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/path/to/pickme/hooks/session-start.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-## CLI Usage
-
-```bash
-# Install hooks into Claude Code
-pickme init
-
-# Search for files
-pickme search "component"
-pickme search "@*.tsx" --limit 50
-pickme search "button" --root ~/project
-
-# Index a directory
-pickme index ~/Developer
-
-# Refresh an existing index
-pickme refresh ~/Developer
-
-# Show status
-pickme status
-pickme status --json
-```
-
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `PICKME_DEBUG=1` | Enable debug logging |
-| `PICKME_CONFIG_PATH` | Override config file location |
-| `PICKME_DB_PATH` | Override database location |
-| `NO_COLOR` | Disable colored output |
+For configuration options and CLI details, see [`docs/`](docs/).
 
 ## How It Works
 
@@ -164,7 +59,7 @@ pickme status --json
 |------|--------------|
 | Config | `~/.config/pickme/config.toml` |
 | Database | `~/.local/share/pickme/index.db` |
-| Hooks | `~/.config/pickme/hooks/` |
+| Example config | [`docs/config.example.toml`](docs/config.example.toml) |
 
 Falls back to `~/.pickme/` if XDG directories aren't available.
 

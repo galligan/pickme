@@ -83,6 +83,17 @@ export function getDataDir(): string {
   return join(homedir(), '.pickme')
 }
 
+/**
+ * Gets the plugin directory for pickme.
+ *
+ * The plugin is stored in the data directory under 'plugin/'.
+ *
+ * @returns Absolute path to the plugin directory
+ */
+export function getPluginDir(): string {
+  return join(getDataDir(), 'plugin')
+}
+
 // ============================================================================
 // Path Utilities
 // ============================================================================

@@ -25,7 +25,9 @@ import { createFilePicker } from './src/index'
 import { getDefaultDbPath, openDatabase, getWatchedRoots } from './src/db'
 import { loadConfig } from './src/config'
 import { runInit } from './src/init'
+import { checkForUpdate, performUpdate } from './src/update'
 import { existsSync } from 'node:fs'
+import ora from 'ora'
 
 // ============================================================================
 // Constants
@@ -229,6 +231,64 @@ async function cmdInit(): Promise<number> {
   return result.success ? EXIT_SUCCESS : EXIT_ERROR
 }
 
+async function cmdUpdate(args: string[], opts: OutputOptions): Promise<number> {
+  const checkOnly = args.includes('--check') || args.includes('-c')
+
+  if (checkOnly) {
+    // Just check for updates
+    info('Checking for updates...', opts)
+    try {
+      const result = await checkForUpdate(VERSION)
+
+      if (opts.json) {
+        output(result, opts)
+      } else if (result.hasUpdate) {
+        output(`Update available: v${result.currentVersion} → v${result.latestVersion}`, opts)
+        if (result.publishedAt) {
+          const date = new Date(result.publishedAt).toLocaleDateString()
+          output(`Released: ${date}`, opts)
+        }
+        output(`\nRun '${NAME} update' to install.`, opts)
+      } else {
+        output(`You're on the latest version (v${result.currentVersion}).`, opts)
+      }
+
+      return EXIT_SUCCESS
+    } catch (err) {
+      error(err instanceof Error ? err.message : String(err), opts)
+      return EXIT_ERROR
+    }
+  }
+
+  // Perform the update with spinner
+  const spinner = opts.quiet || opts.json ? null : ora('Checking for updates...').start()
+
+  const result = await performUpdate(VERSION, (message, percent) => {
+    if (spinner) {
+      if (percent !== undefined) {
+        spinner.text = `${message} ${percent}%`
+      } else {
+        spinner.text = message
+      }
+    }
+  })
+
+  if (opts.json) {
+    spinner?.stop()
+    output(result, opts)
+  } else if (result.success) {
+    if (result.previousVersion === result.newVersion) {
+      spinner?.succeed(`Already up to date (v${result.newVersion})`)
+    } else {
+      spinner?.succeed(`Updated: v${result.previousVersion} → v${result.newVersion}`)
+    }
+  } else {
+    spinner?.fail(result.error || 'Update failed')
+  }
+
+  return result.success ? EXIT_SUCCESS : EXIT_ERROR
+}
+
 async function cmdStatus(opts: OutputOptions): Promise<number> {
   const config = await loadConfig()
   const dbPath = getDefaultDbPath()
@@ -299,6 +359,10 @@ COMMANDS
   refresh <path>     Refresh an existing index
   status             Show index status and configuration
   init               Install pickme hooks into Claude Code
+  update             Update pickme to the latest version
+
+UPDATE OPTIONS
+  -c, --check        Check for updates without installing
 
 SEARCH OPTIONS
   -r, --root <path>  Project root for relative paths (default: cwd)
@@ -317,6 +381,8 @@ EXAMPLES
   ${NAME} index ~/Developer
   ${NAME} refresh .
   ${NAME} status --json
+  ${NAME} update --check
+  ${NAME} update
 
 ENVIRONMENT
   PICKME_DEBUG=1     Enable debug logging
@@ -361,6 +427,8 @@ async function main(): Promise<number> {
         return await cmdStatus(flags)
       case 'init':
         return await cmdInit()
+      case 'update':
+        return await cmdUpdate(args, flags)
       default:
         error(`unknown command: ${command}`, flags)
         console.error(`Run '${NAME} --help' for usage.`)

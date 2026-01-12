@@ -1,0 +1,9 @@
+{
+  "name": "pickme",
+  "version": "1.0.0",
+  "description": "Ultrafast @file suggester with background index refresh",
+  "author": {
+    "name": "Matt Galligan",
+    "url": "https://github.com/galligan"
+  }
+}

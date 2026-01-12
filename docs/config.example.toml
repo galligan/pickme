@@ -1,0 +1,109 @@
+# Pickme Configuration
+# ====================
+# Copy to ~/.config/pickme/config.toml and customize.
+# All values shown are defaults - uncomment to override.
+
+# ------------------------------------------------------------------------------
+# Frecency Weights
+# ------------------------------------------------------------------------------
+# Controls how files are ranked in search results.
+
+[weights]
+# git_recency = 1.0                 # recent commits boost score
+# git_frequency = 0.5               # frequently-edited files rank higher
+# git_status = 5.0                  # uncommitted changes rank highest
+
+# ------------------------------------------------------------------------------
+# Namespaces
+# ------------------------------------------------------------------------------
+# Named shortcuts for filtering searches. Use as @namespace in queries.
+# Values can be a path (changes root) or array of globs (filters within project).
+
+[namespaces]
+# claude = [".claude/**", "**/claude/**"]
+# docs = ["docs/**", "*.md", "README*", "CHANGELOG*"]
+# dev = "~/Developer"
+# config = "~/.config"
+
+# ------------------------------------------------------------------------------
+# Priorities
+# ------------------------------------------------------------------------------
+# Patterns to boost (high) or penalize (low) in results.
+
+[priorities]
+# high = [
+#   "CLAUDE.md",
+#   "package.json",
+#   "Cargo.toml",
+#   "*.ts",
+#   "*.tsx",
+#   "src/**",
+# ]
+# low = [
+#   "node_modules/**",
+#   "dist/**",
+#   "build/**",
+#   "*.lock",
+#   ".git/**",
+#   "*.min.js",
+# ]
+
+# ------------------------------------------------------------------------------
+# Index Configuration
+# ------------------------------------------------------------------------------
+# Controls what directories are indexed and how.
+
+[index]
+# roots = ["~/Developer", "~/.config"]
+
+# Exclude patterns - these are always skipped during indexing.
+# Pickme includes sensible defaults for common build artifacts, caches, etc.
+[index.exclude]
+# patterns = [
+#   ".git",
+#   ".svn",
+#   ".hg",
+#   "node_modules",
+#   "vendor",
+#   ".pnpm",
+#   "dist",
+#   "build",
+#   "out",
+#   ".next",
+#   ".nuxt",
+#   ".output",
+#   "target",
+#   ".cache",
+#   "__pycache__",
+#   ".pytest_cache",
+#   ".mypy_cache",
+#   ".turbo",
+#   ".parcel-cache",
+#   "*.min.js",
+#   "*.min.css",
+#   "*.map",
+#   "*.pyc",
+#   "*.pyo",
+#   "*.wasm",
+#   ".tmp",
+#   ".temp",
+# ]
+
+# Enable to also exclude files matching .gitignore patterns.
+# Off by default - gitignored files are often still useful to reference.
+# gitignored_files = true
+
+# Include patterns - explicitly include files even if they match excludes.
+# Use for files you want despite default exclusions.
+[index.include]
+# patterns = []
+
+# Max depth per root directory.
+[index.depth]
+# default = 10
+# "~/.config" = 5                   # shallower for config directories
+
+# Performance limits.
+[index.limits]
+# max_files_per_root = 50000        # stop indexing after this many files
+# warn_threshold_mb = 500           # warn if directory exceeds this size

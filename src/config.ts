@@ -88,6 +88,16 @@ export interface IndexLimitsConfig {
 export interface ExcludeConfig {
   /** Glob patterns to exclude from indexing. */
   readonly patterns: readonly string[]
+  /** Whether to exclude files matched by .gitignore. Default: false */
+  readonly gitignored_files?: boolean
+}
+
+/**
+ * Inclusion patterns for indexing.
+ */
+export interface IncludeConfig {
+  /** Glob patterns to explicitly include (overrides excludes). */
+  readonly patterns: readonly string[]
 }
 
 /**
@@ -98,6 +108,8 @@ export interface IndexConfig {
   readonly roots: readonly string[]
   /** Exclusion patterns applied globally. */
   readonly exclude: ExcludeConfig
+  /** Inclusion patterns (overrides excludes). */
+  readonly include: IncludeConfig
   /** Max depth per root directory. */
   readonly depth: DepthConfig
   /** Performance limits. */
@@ -160,15 +172,45 @@ export const DEFAULT_CONFIG: Config = {
     roots: ['~/Developer', '~/.config'],
     exclude: {
       patterns: [
-        'node_modules',
+        // Version control
         '.git',
+        '.svn',
+        '.hg',
+        // Dependencies
+        'node_modules',
+        'vendor',
+        '.pnpm',
+        // Build outputs
         'dist',
         'build',
+        'out',
         '.next',
+        '.nuxt',
+        '.output',
         'target',
+        // Caches
+        '.cache',
         '__pycache__',
+        '.pytest_cache',
+        '.mypy_cache',
+        '.turbo',
+        '.parcel-cache',
+        // Generated files
+        '*.min.js',
+        '*.min.css',
+        '*.map',
         '*.pyc',
+        '*.pyo',
+        // Large binaries
+        '*.wasm',
+        // Temp files
+        '.tmp',
+        '.temp',
       ],
+      gitignored_files: false,
+    },
+    include: {
+      patterns: [],
     },
     depth: {
       default: 10,
@@ -209,7 +251,11 @@ function getExpandedDefaults(): Config {
     priorities: { ...DEFAULT_CONFIG.priorities },
     index: {
       roots: DEFAULT_CONFIG.index.roots.map(expandTilde),
-      exclude: { patterns: [...DEFAULT_CONFIG.index.exclude.patterns] },
+      exclude: {
+        patterns: [...DEFAULT_CONFIG.index.exclude.patterns],
+        gitignored_files: DEFAULT_CONFIG.index.exclude.gitignored_files,
+      },
+      include: { patterns: [...DEFAULT_CONFIG.index.include.patterns] },
       depth: { ...DEFAULT_CONFIG.index.depth },
       limits: { ...DEFAULT_CONFIG.index.limits },
     },
@@ -233,7 +279,8 @@ interface RawConfig {
   priorities?: Partial<PrioritiesConfig>
   index?: {
     roots?: string[]
-    exclude?: { patterns?: string[] }
+    exclude?: { patterns?: string[]; gitignored_files?: boolean }
+    include?: { patterns?: string[] }
     depth?: Record<string, number>
     limits?: Partial<IndexLimitsConfig>
   }
@@ -337,8 +384,13 @@ function validateIndex(raw: RawConfig['index'] | undefined): IndexConfig {
   const roots = rawRoots.map(expandTilde)
 
   // Validate exclude patterns
-  const rawPatterns = raw?.exclude?.patterns ?? defaults.exclude.patterns
-  const patterns = validateStringArray(rawPatterns, defaults.exclude.patterns, 'index.exclude.patterns')
+  const rawExcludePatterns = raw?.exclude?.patterns ?? defaults.exclude.patterns
+  const excludePatterns = validateStringArray(rawExcludePatterns, defaults.exclude.patterns, 'index.exclude.patterns')
+  const gitignored = raw?.exclude?.gitignored_files ?? defaults.exclude.gitignored_files
+
+  // Validate include patterns
+  const rawIncludePatterns = raw?.include?.patterns ?? defaults.include.patterns
+  const includePatterns = validateStringArray(rawIncludePatterns, defaults.include.patterns, 'index.include.patterns')
 
   // Validate depth configuration
   const rawDepth = raw?.depth ?? {}
@@ -369,7 +421,8 @@ function validateIndex(raw: RawConfig['index'] | undefined): IndexConfig {
 
   return {
     roots,
-    exclude: { patterns },
+    exclude: { patterns: excludePatterns, gitignored_files: gitignored },
+    include: { patterns: includePatterns },
     depth: depth as DepthConfig,
     limits,
   }
