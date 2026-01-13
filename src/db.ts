@@ -7,38 +7,26 @@
  * @module db
  */
 
-import { Database } from "bun:sqlite";
-import { join } from "node:path";
-import { DatabaseError, FTSSyntaxError, matchesErrorPattern, ErrorPatterns } from "./errors";
-import { getDataDir } from "./utils";
+import { Database } from 'bun:sqlite'
+import { join } from 'node:path'
+import { DatabaseError, FTSSyntaxError, matchesErrorPattern, ErrorPatterns } from './errors'
+import { getDataDir } from './utils'
 
 // Re-export types from shared types module for backwards compatibility
-export type {
-  FileMeta,
-  FrecencyRecord,
-  WatchedRoot,
-  SearchResult,
-  SearchOptions,
-} from "./types";
+export type { FileMeta, FrecencyRecord, WatchedRoot, SearchResult, SearchOptions } from './types'
 
 // Import types for local use
-import type {
-  FileMeta,
-  FrecencyRecord,
-  WatchedRoot,
-  SearchResult,
-  SearchOptions,
-} from "./types";
+import type { FileMeta, FrecencyRecord, WatchedRoot, SearchResult, SearchOptions } from './types'
 
 // ============================================================================
 // Constants
 // ============================================================================
 
 /** Default database path (uses XDG Base Directory Specification) */
-const DEFAULT_DB_PATH = join(getDataDir(), "index.db");
+const DEFAULT_DB_PATH = join(getDataDir(), 'index.db')
 
 /** Schema version for migrations */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 1
 
 // ============================================================================
 // Schema SQL
@@ -86,7 +74,7 @@ const SCHEMA_STATEMENTS = [
   // Indexes for efficient queries
   `CREATE INDEX IF NOT EXISTS idx_files_meta_root ON files_meta(root)`,
   `CREATE INDEX IF NOT EXISTS idx_frecency_path ON frecency(path)`,
-];
+]
 
 /**
  * FTS5 virtual table creation - must be handled separately since
@@ -103,7 +91,7 @@ const FTS5_TABLE_SQL = `CREATE VIRTUAL TABLE files_fts USING fts5(
   content=files_meta,
   content_rowid=rowid,
   tokenize="unicode61 remove_diacritics 1"
-)`;
+)`
 
 /**
  * Triggers to keep FTS in sync with metadata table.
@@ -125,7 +113,7 @@ const TRIGGER_STATEMENTS = [
     INSERT INTO files_fts(rowid, path, filename, dir_components)
     VALUES (NEW.rowid, NEW.path, NEW.filename, NEW.dir_components);
   END`,
-];
+]
 
 // ============================================================================
 // FTS5 Query Escaping
@@ -144,7 +132,7 @@ const TRIGGER_STATEMENTS = [
  * - Pipe for OR
  * - Backslash is the escape character itself
  */
-const FTS5_SPECIAL_CHARS = /["\(\)\*\^\:\+\-\|\\/]/g;
+const FTS5_SPECIAL_CHARS = /["\(\)\*\^\:\+\-\|\\/]/g
 
 /**
  * Escapes special FTS5 characters in a query string.
@@ -164,31 +152,31 @@ const FTS5_SPECIAL_CHARS = /["\(\)\*\^\:\+\-\|\\/]/g;
  */
 export function escapeFTSQuery(query: string): string {
   // Trim whitespace
-  const trimmed = query.trim();
+  const trimmed = query.trim()
   if (!trimmed) {
-    return "";
+    return ''
   }
 
   // Split into tokens on whitespace and path separators
-  const tokens = trimmed.split(/[\s\/\\]+/).filter(Boolean);
+  const tokens = trimmed.split(/[\s\/\\]+/).filter(Boolean)
   if (tokens.length === 0) {
-    return "";
+    return ''
   }
 
   // Wrap each token in quotes, escaping embedded quotes
   return tokens
-    .map((token) => {
+    .map(token => {
       // Remove special characters that could break FTS5
-      const cleaned = token.replace(FTS5_SPECIAL_CHARS, "");
+      const cleaned = token.replace(FTS5_SPECIAL_CHARS, '')
       if (!cleaned) {
-        return null;
+        return null
       }
       // Double any embedded quotes
-      const escaped = cleaned.replace(/"/g, '""');
-      return `"${escaped}"`;
+      const escaped = cleaned.replace(/"/g, '""')
+      return `"${escaped}"`
     })
     .filter(Boolean)
-    .join(" ");
+    .join(' ')
 }
 
 /**
@@ -207,15 +195,15 @@ export function escapeFTSQuery(query: string): string {
  * ```
  */
 export function buildPrefixQuery(query: string): string {
-  const escaped = escapeFTSQuery(query);
+  const escaped = escapeFTSQuery(query)
   if (!escaped) {
-    return "";
+    return ''
   }
 
   // Add prefix matching to the last token
   // The escaped query has tokens like: "token1" "token2" "token3"
   // We want: "token1" "token2" "token3"*
-  return escaped + "*";
+  return escaped + '*'
 }
 
 // ============================================================================
@@ -244,23 +232,23 @@ export function buildPrefixQuery(query: string): string {
  */
 export function openDatabase(dbPath: string = DEFAULT_DB_PATH): Database {
   try {
-    const db = new Database(dbPath, { create: true });
+    const db = new Database(dbPath, { create: true })
 
     // Enable foreign keys
-    db.exec("PRAGMA foreign_keys = ON;");
+    db.exec('PRAGMA foreign_keys = ON;')
 
     // Initialize schema
-    initializeSchema(db);
+    initializeSchema(db)
 
-    return db;
+    return db
   } catch (err) {
     if (matchesErrorPattern(err, ErrorPatterns.DATABASE_LOCKED)) {
-      throw DatabaseError.locked(dbPath);
+      throw DatabaseError.locked(dbPath)
     }
     throw DatabaseError.connectionFailed(
       dbPath,
       err instanceof Error ? err : new Error(String(err))
-    );
+    )
   }
 }
 
@@ -269,11 +257,12 @@ export function openDatabase(dbPath: string = DEFAULT_DB_PATH): Database {
  */
 function tableExists(db: Database, tableName: string): boolean {
   const result = db
-    .query<{ count: number }, [string]>(
-      "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name = ?"
-    )
-    .get(tableName);
-  return (result?.count ?? 0) > 0;
+    .query<
+      { count: number },
+      [string]
+    >("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name = ?")
+    .get(tableName)
+  return (result?.count ?? 0) > 0
 }
 
 /**
@@ -289,62 +278,58 @@ function tableExists(db: Database, tableName: string): boolean {
 function initializeSchema(db: Database): void {
   try {
     // Enable WAL mode for concurrent reads
-    db.exec("PRAGMA journal_mode = WAL");
+    db.exec('PRAGMA journal_mode = WAL')
 
     // Check if schema is already initialized
-    const schemaExists = tableExists(db, "schema_meta");
+    const schemaExists = tableExists(db, 'schema_meta')
 
     if (!schemaExists) {
       // Fresh database - run full schema
       for (const stmt of SCHEMA_STATEMENTS) {
-        db.exec(stmt);
+        db.exec(stmt)
       }
 
       // Create FTS5 virtual table (doesn't support IF NOT EXISTS reliably)
-      db.exec(FTS5_TABLE_SQL);
+      db.exec(FTS5_TABLE_SQL)
 
       // Create triggers
       for (const stmt of TRIGGER_STATEMENTS) {
-        db.exec(stmt);
+        db.exec(stmt)
       }
 
       // Record schema version
-      db.prepare("INSERT INTO schema_meta (key, value) VALUES (?, ?)").run(
-        "version",
+      db.prepare('INSERT INTO schema_meta (key, value) VALUES (?, ?)').run(
+        'version',
         String(SCHEMA_VERSION)
-      );
+      )
     } else {
       // Existing database - check if FTS5 table exists
-      const ftsExists = tableExists(db, "files_fts");
+      const ftsExists = tableExists(db, 'files_fts')
       if (!ftsExists) {
         // FTS5 table missing - recreate it and triggers
-        db.exec(FTS5_TABLE_SQL);
+        db.exec(FTS5_TABLE_SQL)
         for (const stmt of TRIGGER_STATEMENTS) {
-          db.exec(stmt);
+          db.exec(stmt)
         }
       }
 
       // Check version for potential migrations
       const versionRow = db
-        .query<{ value: string }, []>(
-          "SELECT value FROM schema_meta WHERE key = 'version'"
-        )
-        .get();
+        .query<{ value: string }, []>("SELECT value FROM schema_meta WHERE key = 'version'")
+        .get()
 
-      const currentVersion = versionRow ? parseInt(versionRow.value, 10) : 0;
+      const currentVersion = versionRow ? parseInt(versionRow.value, 10) : 0
 
       if (currentVersion < SCHEMA_VERSION) {
         // Future: run migrations here
-        db.prepare("UPDATE schema_meta SET value = ? WHERE key = ?").run(
+        db.prepare('UPDATE schema_meta SET value = ? WHERE key = ?').run(
           String(SCHEMA_VERSION),
-          "version"
-        );
+          'version'
+        )
       }
     }
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -355,13 +340,13 @@ function initializeSchema(db: Database): void {
  */
 export function closeDatabase(db: Database): void {
   try {
-    db.close();
+    db.close()
   } catch (err) {
     // Ignore errors on close - database may already be closed
     console.warn(
-      "[pickme] Warning closing database:",
+      '[pickme] Warning closing database:',
       err instanceof Error ? err.message : String(err)
-    );
+    )
   }
 }
 
@@ -402,7 +387,7 @@ export function upsertFile(db: Database, file: FileMeta): void {
         root = excluded.root,
         mtime = excluded.mtime,
         relative_path = excluded.relative_path
-    `);
+    `)
 
     stmt.run({
       $path: file.path,
@@ -411,11 +396,9 @@ export function upsertFile(db: Database, file: FileMeta): void {
       $root: file.root,
       $mtime: file.mtime,
       $relativePath: file.relativePath,
-    });
+    })
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -439,7 +422,7 @@ export function upsertFile(db: Database, file: FileMeta): void {
  */
 export function upsertFiles(db: Database, files: readonly FileMeta[]): void {
   if (files.length === 0) {
-    return;
+    return
   }
 
   try {
@@ -452,9 +435,9 @@ export function upsertFiles(db: Database, files: readonly FileMeta[]): void {
         root = excluded.root,
         mtime = excluded.mtime,
         relative_path = excluded.relative_path
-    `);
+    `)
 
-    db.exec("BEGIN IMMEDIATE");
+    db.exec('BEGIN IMMEDIATE')
 
     try {
       for (const file of files) {
@@ -465,17 +448,15 @@ export function upsertFiles(db: Database, files: readonly FileMeta[]): void {
           $root: file.root,
           $mtime: file.mtime,
           $relativePath: file.relativePath,
-        });
+        })
       }
-      db.exec("COMMIT");
+      db.exec('COMMIT')
     } catch (err) {
-      db.exec("ROLLBACK");
-      throw err;
+      db.exec('ROLLBACK')
+      throw err
     }
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -491,27 +472,25 @@ export function upsertFiles(db: Database, files: readonly FileMeta[]): void {
  */
 export function deleteFiles(db: Database, paths: readonly string[]): void {
   if (paths.length === 0) {
-    return;
+    return
   }
 
   try {
-    const stmt = db.prepare("DELETE FROM files_meta WHERE path = $path");
+    const stmt = db.prepare('DELETE FROM files_meta WHERE path = $path')
 
-    db.exec("BEGIN IMMEDIATE");
+    db.exec('BEGIN IMMEDIATE')
 
     try {
       for (const path of paths) {
-        stmt.run({ $path: path });
+        stmt.run({ $path: path })
       }
-      db.exec("COMMIT");
+      db.exec('COMMIT')
     } catch (err) {
-      db.exec("ROLLBACK");
-      throw err;
+      db.exec('ROLLBACK')
+      throw err
     }
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -545,28 +524,28 @@ export function searchFiles(
   query: string,
   options: SearchOptions = {}
 ): SearchResult[] {
-  const { pathFilters = [], limit = 50 } = options;
+  const { pathFilters = [], limit = 50 } = options
 
   // Build FTS5 query with prefix matching
-  const ftsQuery = buildPrefixQuery(query);
+  const ftsQuery = buildPrefixQuery(query)
   if (!ftsQuery) {
-    return [];
+    return []
   }
 
   try {
     // Build path filter clause
-    let pathClause = "";
+    let pathClause = ''
     const params: Record<string, string | number> = {
       $query: ftsQuery,
       $limit: limit,
-    };
+    }
 
     if (pathFilters.length > 0) {
       const clauses = pathFilters.map((filter, i) => {
-        params[`$filter${i}`] = filter + "%";
-        return `m.path LIKE $filter${i}`;
-      });
-      pathClause = `AND (${clauses.join(" OR ")})`;
+        params[`$filter${i}`] = filter + '%'
+        return `m.path LIKE $filter${i}`
+      })
+      pathClause = `AND (${clauses.join(' OR ')})`
     }
 
     // Query combines FTS5 rank with frecency scores
@@ -590,32 +569,30 @@ export function searchFiles(
       ${pathClause}
       ORDER BY score DESC
       LIMIT $limit
-    `;
+    `
 
     const stmt = db.query<
       { path: string; filename: string; relativePath: string | null; score: number },
       Record<string, string | number>
-    >(sql);
+    >(sql)
 
-    const results = stmt.all(params);
+    const results = stmt.all(params)
 
-    return results.map((row) => ({
+    return results.map(row => ({
       path: row.path,
       filename: row.filename,
       relativePath: row.relativePath ?? row.path,
       score: row.score,
-    }));
+    }))
   } catch (err) {
     // Check for FTS5 syntax errors
     if (matchesErrorPattern(err, ErrorPatterns.FTS5_SYNTAX)) {
       throw FTSSyntaxError.fromSqliteError(
         err instanceof Error ? err : new Error(String(err)),
         query
-      );
+      )
     }
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -634,22 +611,22 @@ export function listFilesByExtension(
   extension: string,
   options: { pathFilters?: readonly string[]; limit?: number } = {}
 ): SearchResult[] {
-  const { pathFilters = [], limit = 50 } = options;
+  const { pathFilters = [], limit = 50 } = options
 
   try {
     // Build path filter clause
-    let pathClause = "";
+    let pathClause = ''
     const params: Record<string, string | number> = {
       $ext: `%${extension}`,
       $limit: limit,
-    };
+    }
 
     if (pathFilters.length > 0) {
       const clauses = pathFilters.map((filter, i) => {
-        params[`$filter${i}`] = filter + "%";
-        return `m.path LIKE $filter${i}`;
-      });
-      pathClause = `AND (${clauses.join(" OR ")})`;
+        params[`$filter${i}`] = filter + '%'
+        return `m.path LIKE $filter${i}`
+      })
+      pathClause = `AND (${clauses.join(' OR ')})`
     }
 
     // Query files_meta directly, joining with frecency for scoring
@@ -669,25 +646,89 @@ export function listFilesByExtension(
       ${pathClause}
       ORDER BY score DESC, m.filename ASC
       LIMIT $limit
-    `;
+    `
 
     const stmt = db.query<
       { path: string; filename: string; relativePath: string | null; score: number },
       Record<string, string | number>
-    >(sql);
+    >(sql)
 
-    const results = stmt.all(params);
+    const results = stmt.all(params)
 
-    return results.map((row) => ({
+    return results.map(row => ({
       path: row.path,
       filename: row.filename,
       relativePath: row.relativePath ?? row.path,
       score: row.score,
-    }));
+    }))
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
+  }
+}
+
+/**
+ * Lists files without requiring an FTS query.
+ * Used for fuzzy search candidate selection.
+ *
+ * @param db - Open database connection
+ * @param options - Optional path filters and limit
+ * @returns Array of files sorted by frecency score
+ * @throws DatabaseError if the query fails
+ */
+export function listFiles(
+  db: Database,
+  options: { pathFilters?: readonly string[]; limit?: number } = {}
+): SearchResult[] {
+  const { pathFilters = [], limit = 1000 } = options
+
+  try {
+    // Build path filter clause
+    let pathClause = ''
+    const params: Record<string, string | number> = {
+      $limit: limit,
+    }
+
+    if (pathFilters.length > 0) {
+      const clauses = pathFilters.map((filter, i) => {
+        params[`$filter${i}`] = filter + '%'
+        return `m.path LIKE $filter${i}`
+      })
+      pathClause = `AND (${clauses.join(' OR ')})`
+    }
+
+    const sql = `
+      SELECT
+        m.path,
+        m.filename,
+        m.relative_path as relativePath,
+        (
+          COALESCE(f.git_recency, 0) +
+          COALESCE(f.git_frequency, 0) * 0.1 +
+          COALESCE(f.git_status_boost, 0)
+        ) as score
+      FROM files_meta m
+      LEFT JOIN frecency f ON m.path = f.path
+      WHERE 1 = 1
+      ${pathClause}
+      ORDER BY score DESC, m.filename ASC
+      LIMIT $limit
+    `
+
+    const stmt = db.query<
+      { path: string; filename: string; relativePath: string | null; score: number },
+      Record<string, string | number>
+    >(sql)
+
+    const results = stmt.all(params)
+
+    return results.map(row => ({
+      path: row.path,
+      filename: row.filename,
+      relativePath: row.relativePath ?? row.path,
+      score: row.score,
+    }))
+  } catch (err) {
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -707,25 +748,23 @@ export function getWatchedRoots(db: Database): WatchedRoot[] {
     const rows = db
       .query<
         {
-          root: string;
-          max_depth: number;
-          last_indexed: number | null;
-          file_count: number | null;
+          root: string
+          max_depth: number
+          last_indexed: number | null
+          file_count: number | null
         },
         []
-      >("SELECT root, max_depth, last_indexed, file_count FROM watched_roots")
-      .all();
+      >('SELECT root, max_depth, last_indexed, file_count FROM watched_roots')
+      .all()
 
-    return rows.map((row) => ({
+    return rows.map(row => ({
       root: row.root,
       maxDepth: row.max_depth,
       lastIndexed: row.last_indexed,
       fileCount: row.file_count,
-    }));
+    }))
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -745,18 +784,16 @@ export function updateWatchedRoot(db: Database, root: WatchedRoot): void {
         max_depth = excluded.max_depth,
         last_indexed = excluded.last_indexed,
         file_count = excluded.file_count
-    `);
+    `)
 
     stmt.run({
       $root: root.root,
       $maxDepth: root.maxDepth,
       $lastIndexed: root.lastIndexed,
       $fileCount: root.fileCount,
-    });
+    })
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -774,12 +811,9 @@ export function updateWatchedRoot(db: Database, root: WatchedRoot): void {
  * @param frecencies - Array of frecency records to upsert
  * @throws DatabaseError if the operation fails
  */
-export function upsertFrecency(
-  db: Database,
-  frecencies: readonly FrecencyRecord[]
-): void {
+export function upsertFrecency(db: Database, frecencies: readonly FrecencyRecord[]): void {
   if (frecencies.length === 0) {
-    return;
+    return
   }
 
   try {
@@ -791,9 +825,9 @@ export function upsertFrecency(
         git_frequency = excluded.git_frequency,
         git_status_boost = excluded.git_status_boost,
         last_seen = excluded.last_seen
-    `);
+    `)
 
-    db.exec("BEGIN IMMEDIATE");
+    db.exec('BEGIN IMMEDIATE')
 
     try {
       for (const record of frecencies) {
@@ -803,17 +837,15 @@ export function upsertFrecency(
           $gitFrequency: record.gitFrequency,
           $gitStatusBoost: record.gitStatusBoost,
           $lastSeen: record.lastSeen,
-        });
+        })
       }
-      db.exec("COMMIT");
+      db.exec('COMMIT')
     } catch (err) {
-      db.exec("ROLLBACK");
-      throw err;
+      db.exec('ROLLBACK')
+      throw err
     }
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -828,34 +860,29 @@ export function upsertFrecency(
  * @returns Number of files pruned
  * @throws DatabaseError if the operation fails
  */
-export function pruneDeletedFiles(
-  db: Database,
-  existingPaths: Set<string>
-): number {
+export function pruneDeletedFiles(db: Database, existingPaths: Set<string>): number {
   try {
     // Get all paths currently in the database
-    const rows = db.query<{ path: string }, []>("SELECT path FROM files_meta").all();
+    const rows = db.query<{ path: string }, []>('SELECT path FROM files_meta').all()
 
     // Find paths to delete
-    const pathsToDelete: string[] = [];
+    const pathsToDelete: string[] = []
     for (const row of rows) {
       if (!existingPaths.has(row.path)) {
-        pathsToDelete.push(row.path);
+        pathsToDelete.push(row.path)
       }
     }
 
     if (pathsToDelete.length === 0) {
-      return 0;
+      return 0
     }
 
     // Delete in a transaction
-    deleteFiles(db, pathsToDelete);
+    deleteFiles(db, pathsToDelete)
 
-    return pathsToDelete.length;
+    return pathsToDelete.length
   } catch (err) {
-    throw DatabaseError.fromSqliteError(
-      err instanceof Error ? err : new Error(String(err))
-    );
+    throw DatabaseError.fromSqliteError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -865,5 +892,5 @@ export function pruneDeletedFiles(
  * @returns The default path for the index database
  */
 export function getDefaultDbPath(): string {
-  return DEFAULT_DB_PATH;
+  return DEFAULT_DB_PATH
 }

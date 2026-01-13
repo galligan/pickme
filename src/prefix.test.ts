@@ -7,6 +7,7 @@ import { parseQuery, resolvePrefix, type Prefix, type ParseResult } from './pref
 
 // Test config with sample namespaces
 const testConfig: Config = {
+  active: true,
   weights: { git_recency: 1.0, git_frequency: 0.5, git_status: 5.0 },
   namespaces: {
     claude: ['.claude/**', '**/claude/**'],
@@ -17,7 +18,10 @@ const testConfig: Config = {
   priorities: { high: [], low: [] },
   index: {
     roots: [],
-    exclude: { patterns: [] },
+    disabled: [],
+    include_hidden: false,
+    exclude: { patterns: [], gitignored_files: false },
+    include: { patterns: [] },
     depth: { default: 10 },
     limits: { max_files_per_root: 50000, warn_threshold_mb: 500 },
   },
@@ -41,6 +45,46 @@ describe('parseQuery', () => {
       const result = parseQuery('@@', testConfig)
       expect(result.prefix).toBeNull()
       expect(result.searchQuery).toBe('@')
+    })
+  })
+
+  describe('quoted query (@"..." / @\'...\')', () => {
+    test('parses double-quoted query as literal', () => {
+      const result = parseQuery('@"My File"', testConfig)
+      expect(result.prefix).toBeNull()
+      expect(result.searchQuery).toBe('My File')
+    })
+
+    test('parses single-quoted query as literal', () => {
+      const result = parseQuery("@'My File'", testConfig)
+      expect(result.prefix).toBeNull()
+      expect(result.searchQuery).toBe('My File')
+    })
+
+    test('strips quotes after namespace', () => {
+      const result = parseQuery('@docs:"My File"', testConfig)
+      expect(result.prefix).toEqual({ type: 'namespace', name: 'docs' })
+      expect(result.searchQuery).toBe('My File')
+    })
+
+    test('strips quotes after folder glob', () => {
+      const result = parseQuery('@/components:"My File"', testConfig)
+      expect(result.prefix).toEqual({ type: 'folder', folder: 'components' })
+      expect(result.searchQuery).toBe('My File')
+    })
+  })
+
+  describe('namespace without @ (hook input)', () => {
+    test('parses namespace without @', () => {
+      const result = parseQuery('docs:api', testConfig)
+      expect(result.prefix).toEqual({ type: 'namespace', name: 'docs' })
+      expect(result.searchQuery).toBe('api')
+    })
+
+    test('ignores unknown namespace without @', () => {
+      const result = parseQuery('unknown:query', testConfig)
+      expect(result.prefix).toBeNull()
+      expect(result.searchQuery).toBe('unknown:query')
     })
   })
 
@@ -75,6 +119,34 @@ describe('parseQuery', () => {
       const result = parseQuery('@/claude:', testConfig)
       expect(result.prefix).toEqual({ type: 'folder', folder: 'claude' })
       expect(result.searchQuery).toBe('')
+    })
+  })
+
+  describe('folder shorthand (@folder/)', () => {
+    test('parses folder shorthand with trailing slash', () => {
+      const result = parseQuery('@components/', testConfig)
+      expect(result.prefix).toEqual({ type: 'folder', folder: 'components' })
+      expect(result.searchQuery).toBe('')
+    })
+
+    test('parses dot folder shorthand', () => {
+      const result = parseQuery('@.scratch/', testConfig)
+      expect(result.prefix).toEqual({ type: 'folder', folder: '.scratch' })
+      expect(result.searchQuery).toBe('')
+    })
+  })
+
+  describe('folder shorthand with query (@folder/query)', () => {
+    test('parses folder shorthand with query', () => {
+      const result = parseQuery('@apps/file', testConfig)
+      expect(result.prefix).toEqual({ type: 'folder', folder: 'apps' })
+      expect(result.searchQuery).toBe('file')
+    })
+
+    test('parses folder shorthand with fuzzy query', () => {
+      const result = parseQuery('@apps/~file', testConfig)
+      expect(result.prefix).toEqual({ type: 'folder', folder: 'apps' })
+      expect(result.searchQuery).toBe('~file')
     })
   })
 
@@ -215,6 +287,12 @@ describe('resolvePrefix', () => {
       const result = resolvePrefix(prefix, context, testConfig)
       expect(result.patterns).toEqual(['**/{components,.components}/**/*'])
       expect(result.roots).toBeUndefined()
+    })
+
+    test('respects explicit dot folder', () => {
+      const prefix: Prefix = { type: 'folder', folder: '.scratch' }
+      const result = resolvePrefix(prefix, context, testConfig)
+      expect(result.patterns).toEqual(['**/.scratch/**/*'])
     })
 
     test('handles single-letter folder', () => {

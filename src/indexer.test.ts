@@ -76,6 +76,7 @@ function createMockDbOps(): DbOperations & {
 /** Create a minimal test config */
 function createTestConfig(overrides?: Partial<Config>): Config {
   return {
+    active: true,
     weights: {
       git_recency: 1.0,
       git_frequency: 0.5,
@@ -85,7 +86,9 @@ function createTestConfig(overrides?: Partial<Config>): Config {
     priorities: { high: [], low: [] },
     index: {
       roots: [testDir],
+      disabled: [],
       exclude: { patterns: ['node_modules', '.git'] },
+      include: { patterns: [] },
       depth: { default: 10 },
       limits: {
         max_files_per_root: 50000,
@@ -144,7 +147,9 @@ describe('buildFileMeta', () => {
     expect(meta.root).toBe(root)
     expect(meta.mtime).toBe(mtime)
     expect(meta.relativePath).toBe('src/index.ts')
-    expect(meta.dirComponents).toBe(`Users${sep}dev${sep}project${sep}src${sep}index.ts`.split(sep).join(' '))
+    expect(meta.dirComponents).toBe(
+      `Users${sep}dev${sep}project${sep}src${sep}index.ts`.split(sep).join(' ')
+    )
   })
 
   test('handles files at root level', () => {
@@ -209,13 +214,9 @@ describe('indexDirectory', () => {
     const db = createMockDb()
     const dbOps = createMockDbOps()
 
-    const result = await indexDirectory(
+    const result = await indexDirectory(testDir, { maxDepth: 10, exclude: [] }, db, dbOps, [
       testDir,
-      { maxDepth: 10, exclude: [] },
-      db,
-      dbOps,
-      [testDir]
-    )
+    ])
 
     expect(result.filesIndexed).toBe(3)
     expect(result.filesSkipped).toBe(0)
@@ -240,7 +241,7 @@ describe('indexDirectory', () => {
     )
 
     expect(result.filesIndexed).toBe(1)
-    expect(dbOps.upsertedFiles.some((f) => f.path.includes('node_modules'))).toBe(false)
+    expect(dbOps.upsertedFiles.some(f => f.path.includes('node_modules'))).toBe(false)
   })
 
   test('respects maxDepth option', async () => {
@@ -257,15 +258,9 @@ describe('indexDirectory', () => {
     // Note: fd's --max-depth N means "descend at most N directories"
     // maxDepth 2 = starting dir + one level down
     // So with maxDepth 2, we get root.ts and level1.ts
-    const result = await indexDirectory(
-      testDir,
-      { maxDepth: 2, exclude: [] },
-      db,
-      dbOps,
-      [testDir]
-    )
+    const result = await indexDirectory(testDir, { maxDepth: 2, exclude: [] }, db, dbOps, [testDir])
 
-    const indexedPaths = dbOps.upsertedFiles.map((f) => f.filename)
+    const indexedPaths = dbOps.upsertedFiles.map(f => f.filename)
 
     // With maxDepth 2: root.ts (depth 1) and level1.ts (depth 2) are found
     expect(indexedPaths).toContain('root.ts')
@@ -302,13 +297,9 @@ describe('indexDirectory', () => {
     const db = createMockDb()
     const dbOps = createMockDbOps()
 
-    const result = await indexDirectory(
+    const result = await indexDirectory(testDir, { maxDepth: 10, exclude: [] }, db, dbOps, [
       testDir,
-      { maxDepth: 10, exclude: [] },
-      db,
-      dbOps,
-      [testDir]
-    )
+    ])
 
     expect(result.filesIndexed).toBe(0)
     expect(result.errors).toHaveLength(0)
@@ -321,13 +312,9 @@ describe('indexDirectory', () => {
     const db = createMockDb()
     const dbOps = createMockDbOps()
 
-    const result = await indexDirectory(
+    const result = await indexDirectory(testDir, { maxDepth: 10, exclude: [] }, db, dbOps, [
       testDir,
-      { maxDepth: 10, exclude: [] },
-      db,
-      dbOps,
-      [testDir]
-    )
+    ])
 
     expect(result.filesIndexed).toBeGreaterThanOrEqual(1)
   })
@@ -345,13 +332,9 @@ describe('symlink handling', () => {
     const db = createMockDb()
     const dbOps = createMockDbOps()
 
-    const result = await indexDirectory(
+    const result = await indexDirectory(testDir, { maxDepth: 10, exclude: [] }, db, dbOps, [
       testDir,
-      { maxDepth: 10, exclude: [] },
-      db,
-      dbOps,
-      [testDir]
-    )
+    ])
 
     // Both target and link should resolve to the same canonical path
     // The exact count depends on fd vs fs fallback behavior
@@ -366,16 +349,12 @@ describe('symlink handling', () => {
     const db = createMockDb()
     const dbOps = createMockDbOps()
 
-    const result = await indexDirectory(
+    const result = await indexDirectory(testDir, { maxDepth: 10, exclude: [] }, db, dbOps, [
       testDir,
-      { maxDepth: 10, exclude: [] },
-      db,
-      dbOps,
-      [testDir]
-    )
+    ])
 
     // Should only index the real file
-    expect(dbOps.upsertedFiles.some((f) => f.filename === 'real.ts')).toBe(true)
+    expect(dbOps.upsertedFiles.some(f => f.filename === 'real.ts')).toBe(true)
     expect(result.errors).toHaveLength(0) // Broken symlinks are skipped silently
   })
 
@@ -402,9 +381,9 @@ describe('symlink handling', () => {
       )
 
       // Should only index inside.ts, not the symlink target
-      const paths = dbOps.upsertedFiles.map((f) => f.path)
-      expect(paths.some((p) => p.includes('inside.ts'))).toBe(true)
-      expect(paths.some((p) => p.includes('outside.ts'))).toBe(false)
+      const paths = dbOps.upsertedFiles.map(f => f.path)
+      expect(paths.some(p => p.includes('inside.ts'))).toBe(true)
+      expect(paths.some(p => p.includes('outside.ts'))).toBe(false)
     } finally {
       await rm(outsideDir, { recursive: true, force: true })
     }
@@ -420,11 +399,11 @@ describe('incremental indexing', () => {
     await writeFile(join(testDir, 'old.ts'), 'content')
 
     // Wait a bit then record the last indexed time
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise(resolve => setTimeout(resolve, 100))
     const lastIndexed = Date.now()
 
     // Wait a bit more then create a new file
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise(resolve => setTimeout(resolve, 100))
     await writeFile(join(testDir, 'new.ts'), 'content')
 
     const db = createMockDb()
@@ -439,7 +418,7 @@ describe('incremental indexing', () => {
     )
 
     // Should only index the new file
-    expect(dbOps.upsertedFiles.some((f) => f.filename === 'new.ts')).toBe(true)
+    expect(dbOps.upsertedFiles.some(f => f.filename === 'new.ts')).toBe(true)
     expect(result.filesSkipped).toBeGreaterThanOrEqual(1)
   })
 })
@@ -463,7 +442,9 @@ describe('refreshIndex', () => {
     const config = createTestConfig({
       index: {
         roots: [subdir1, subdir2],
+        disabled: [],
         exclude: { patterns: [] },
+        include: { patterns: [] },
         depth: { default: 10 },
         limits: { max_files_per_root: 50000, warn_threshold_mb: 500 },
       },
@@ -539,13 +520,13 @@ describe('findRecentFiles', () => {
     await writeFile(join(testDir, 'also-recent.ts'), 'content')
 
     // Give filesystem time to settle
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await new Promise(resolve => setTimeout(resolve, 50))
 
     const files = await findRecentFiles(testDir, '1h', { exclude: [] })
 
     expect(files.length).toBeGreaterThanOrEqual(2)
-    expect(files.some((f) => f.includes('recent.ts'))).toBe(true)
-    expect(files.some((f) => f.includes('also-recent.ts'))).toBe(true)
+    expect(files.some(f => f.includes('recent.ts'))).toBe(true)
+    expect(files.some(f => f.includes('also-recent.ts'))).toBe(true)
   })
 
   test('respects exclude patterns', async () => {
@@ -557,8 +538,8 @@ describe('findRecentFiles', () => {
       exclude: ['node_modules'],
     })
 
-    expect(files.some((f) => f.includes('include.ts'))).toBe(true)
-    expect(files.some((f) => f.includes('exclude.js'))).toBe(false)
+    expect(files.some(f => f.includes('include.ts'))).toBe(true)
+    expect(files.some(f => f.includes('exclude.js'))).toBe(false)
   })
 
   test('respects maxResults limit', async () => {
@@ -586,13 +567,9 @@ describe('error recovery', () => {
     const db = createMockDb()
     const dbOps = createMockDbOps()
 
-    const result = await indexDirectory(
+    const result = await indexDirectory(testDir, { maxDepth: 10, exclude: [] }, db, dbOps, [
       testDir,
-      { maxDepth: 10, exclude: [] },
-      db,
-      dbOps,
-      [testDir]
-    )
+    ])
 
     // Should not throw, should have at least the good file
     expect(result.filesIndexed).toBeGreaterThanOrEqual(1)
@@ -604,13 +581,9 @@ describe('error recovery', () => {
     const db = createMockDb()
     const dbOps = createMockDbOps()
 
-    const result = await indexDirectory(
+    const result = await indexDirectory(nonExistent, { maxDepth: 10, exclude: [] }, db, dbOps, [
       nonExistent,
-      { maxDepth: 10, exclude: [] },
-      db,
-      dbOps,
-      [nonExistent]
-    )
+    ])
 
     // Should return empty result, not throw
     expect(result.filesIndexed).toBe(0)
@@ -632,13 +605,7 @@ describe('batch processing', () => {
     const db = createMockDb()
     const dbOps = createMockDbOps()
 
-    await indexDirectory(
-      testDir,
-      { maxDepth: 10, exclude: [] },
-      db,
-      dbOps,
-      [testDir]
-    )
+    await indexDirectory(testDir, { maxDepth: 10, exclude: [] }, db, dbOps, [testDir])
 
     // upsertFiles should have been called multiple times for batching
     // Total files should still be correct

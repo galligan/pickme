@@ -4,6 +4,7 @@
  * Handles three types of prefixes:
  * - Named namespaces: @namespace: (looked up in config)
  * - Folder globs: @/folder: (matches folder/ and .folder/)
+ * - Folder shorthand: @folder/ or @.folder/
  * - Inline globs: @*.ext (filter by file extension)
  *
  * @module prefix
@@ -55,9 +56,10 @@ export interface ResolveResult {
  * Parsing priority:
  * 1. Escape sequence: @@ -> literal @
  * 2. Folder glob: @/folder: (single-segment only)
- * 3. Named namespace: @namespace: (must exist in config)
- * 4. Inline glob: @*.ext
- * 5. No prefix -> null with full query
+ * 3. Folder shorthand: @folder/ (single-segment only)
+ * 4. Named namespace: @namespace: (must exist in config)
+ * 5. Inline glob: @*.ext
+ * 6. No prefix -> null with full query
  *
  * @param query - Raw query string from user input
  * @param config - Configuration containing namespace definitions
@@ -89,7 +91,42 @@ export function parseQuery(query: string, config: Config): ParseResult {
     return { prefix: null, searchQuery: query.slice(1) }
   }
 
-  // 2. Folder glob: @/folder: (single segment only)
+  // 2. Quoted query: @"..."/@'...' (treat as literal search)
+  if (query.startsWith('@')) {
+    const quoted = stripMatchingQuotes(query.slice(1))
+    if (quoted !== query.slice(1)) {
+      return { prefix: null, searchQuery: quoted }
+    }
+  }
+
+  // 3. Namespace without @ (e.g., "docs:query") when hook omits @
+  if (!query.startsWith('@') && query.includes(':')) {
+    const colonIdx = query.indexOf(':')
+    const name = query.slice(0, colonIdx)
+    if (name.length > 0 && !name.includes('/') && name in config.namespaces) {
+      return {
+        prefix: { type: 'namespace', name },
+        searchQuery: stripMatchingQuotes(query.slice(colonIdx + 1)),
+      }
+    }
+  }
+
+  // 4. Folder shorthand with query: @folder/query (single segment only)
+  if (query.startsWith('@') && !query.startsWith('@/') && !query.includes(':')) {
+    const slashIdx = query.indexOf('/')
+    if (slashIdx > 1 && slashIdx === query.lastIndexOf('/')) {
+      const folder = query.slice(1, slashIdx)
+      const rest = query.slice(slashIdx + 1)
+      if (folder.length > 0 && rest.length > 0 && !folder.includes('/')) {
+        return {
+          prefix: { type: 'folder', folder },
+          searchQuery: stripMatchingQuotes(rest),
+        }
+      }
+    }
+  }
+
+  // 5. Folder glob: @/folder: (single segment only)
   if (query.startsWith('@/')) {
     const colonIdx = query.indexOf(':')
     if (colonIdx > 2) {
@@ -98,14 +135,25 @@ export function parseQuery(query: string, config: Config): ParseResult {
       if (folder.length > 0 && !folder.includes('/')) {
         return {
           prefix: { type: 'folder', folder },
-          searchQuery: query.slice(colonIdx + 1),
+          searchQuery: stripMatchingQuotes(query.slice(colonIdx + 1)),
         }
       }
     }
     // Invalid folder glob format, fall through to check other patterns
   }
 
-  // 3. Named namespace: @namespace:
+  // 6. Folder shorthand: @folder/ or @.folder/
+  if (query.startsWith('@') && query.endsWith('/') && !query.includes(':')) {
+    const folder = query.slice(1, -1)
+    if (folder.length > 0 && !folder.includes('/')) {
+      return {
+        prefix: { type: 'folder', folder },
+        searchQuery: '',
+      }
+    }
+  }
+
+  // 7. Named namespace: @namespace:
   if (query.startsWith('@') && query.includes(':')) {
     const colonIdx = query.indexOf(':')
     const name = query.slice(1, colonIdx)
@@ -113,12 +161,12 @@ export function parseQuery(query: string, config: Config): ParseResult {
     if (name.length > 0 && !name.startsWith('/') && name in config.namespaces) {
       return {
         prefix: { type: 'namespace', name },
-        searchQuery: query.slice(colonIdx + 1),
+        searchQuery: stripMatchingQuotes(query.slice(colonIdx + 1)),
       }
     }
   }
 
-  // 4. Inline glob: @*.ext
+  // 8. Inline glob: @*.ext
   if (query.startsWith('@*.')) {
     const pattern = query.slice(1) // "*.md"
     return {
@@ -127,10 +175,21 @@ export function parseQuery(query: string, config: Config): ParseResult {
     }
   }
 
-  // 5. No prefix - return full query
+  // 9. No prefix - return full query
   return { prefix: null, searchQuery: query }
 }
 
+function stripMatchingQuotes(value: string): string {
+  if (value.length < 2) {
+    return value
+  }
+  const first = value[0]
+  const last = value[value.length - 1]
+  if ((first === '"' || first === "'") && last === first) {
+    return value.slice(1, -1)
+  }
+  return value
+}
 
 /**
  * Determines if a namespace value is a path (string) or pattern array.
@@ -179,12 +238,17 @@ function isPathNamespace(value: NamespaceValue): value is string {
 export function resolvePrefix(
   prefix: Prefix,
   context: ResolveContext,
-  config: Config,
+  config: Config
 ): ResolveResult {
   switch (prefix.type) {
     case 'folder': {
       // Expand @/folder: to match both folder/ and .folder/ anywhere in tree
       const { folder } = prefix
+      if (folder.startsWith('.')) {
+        return {
+          patterns: [`**/${folder}/**/*`],
+        }
+      }
       return {
         patterns: [`**/{${folder},.${folder}}/**/*`],
       }

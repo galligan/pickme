@@ -144,9 +144,7 @@ describe('applyFrecencyRanking', () => {
   })
 
   test('adds frecency and final scores to results', () => {
-    const searchResults: SearchResult[] = [
-      createSearchResult('/test/a.ts', 10),
-    ]
+    const searchResults: SearchResult[] = [createSearchResult('/test/a.ts', 10)]
     const frecencyMap = new Map<string, FrecencyRecord>([
       ['/test/a.ts', createRecord('/test/a.ts', { gitRecency: 0.5 })],
     ])
@@ -160,9 +158,7 @@ describe('applyFrecencyRanking', () => {
   })
 
   test('handles results not in frecency map', () => {
-    const searchResults: SearchResult[] = [
-      createSearchResult('/test/unknown.ts', 5),
-    ]
+    const searchResults: SearchResult[] = [createSearchResult('/test/unknown.ts', 5)]
 
     const results = applyFrecencyRanking(searchResults, new Map(), testWeights)
 
@@ -245,16 +241,14 @@ describe('mergeResults', () => {
   })
 
   test('adds fresh files not in indexed results', () => {
-    const indexed: SearchResult[] = [
-      createSearchResult('/test/a.ts', 10),
-    ]
+    const indexed: SearchResult[] = [createSearchResult('/test/a.ts', 10)]
     const fresh = ['/test/b.ts', '/test/c.ts']
 
     const results = mergeResults(indexed, fresh)
 
     expect(results).toHaveLength(3)
-    expect(results.map((r) => r.path)).toContain('/test/b.ts')
-    expect(results.map((r) => r.path)).toContain('/test/c.ts')
+    expect(results.map(r => r.path)).toContain('/test/b.ts')
+    expect(results.map(r => r.path)).toContain('/test/c.ts')
   })
 
   test('fresh files have score 0', () => {
@@ -270,9 +264,7 @@ describe('mergeResults', () => {
   })
 
   test('does not duplicate files already in indexed', () => {
-    const indexed: SearchResult[] = [
-      createSearchResult('/test/a.ts', 10),
-    ]
+    const indexed: SearchResult[] = [createSearchResult('/test/a.ts', 10)]
     const fresh = ['/test/a.ts'] // Same file
 
     const results = mergeResults(indexed, fresh)

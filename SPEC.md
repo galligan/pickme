@@ -11,6 +11,7 @@ Claude Code's built-in `@` file picker uses fast filesystem traversal, but has l
 5. **Performance in monorepos** — Large repositories can be slow without pre-built indexes
 
 This spec defines a custom file picker that addresses these limitations through:
+
 - A global FTS5-indexed database of file paths
 - Frecency scoring based on git history
 - Configurable namespaces and priority patterns
@@ -63,11 +64,11 @@ The file picker consists of:
 
 Benchmarked on macOS with Bun runtime:
 
-| Scenario | Time |
-|----------|------|
-| Bun startup + SQLite open + FTS5 query (10k files) | ~10ms |
-| FTS5 query alone | ~0.5ms |
-| Full index build (10k files) + query | ~40ms |
+| Scenario                                           | Time   |
+| -------------------------------------------------- | ------ |
+| Bun startup + SQLite open + FTS5 query (10k files) | ~10ms  |
+| FTS5 query alone                                   | ~0.5ms |
+| Full index build (10k files) + query               | ~40ms  |
 
 The 100ms latency budget is easily achievable without a daemon.
 
@@ -140,11 +141,13 @@ CREATE INDEX idx_frecency_path ON frecency(path);
 ### Tokenization Notes
 
 We use `unicode61` tokenizer (NOT porter stemmer) because:
+
 - Porter stemmer breaks path prefix matching (`src/comp` would match anywhere)
 - `unicode61` preserves exact tokens for path components
 - `tokenchars='_-'` keeps underscores and hyphens as part of tokens
 
 For true prefix queries, combine FTS5 with `LIKE`:
+
 ```sql
 SELECT path FROM files_fts
 WHERE files_fts MATCH ? AND path LIKE ? || '%'
@@ -154,6 +157,7 @@ ORDER BY rank
 ## Query Scoping
 
 **All queries are project-scoped by default.** Unprefixed queries search:
+
 1. Current project root (`CLAUDE_PROJECT_DIR`)
 2. Additional directories from `.claude/settings.json`
 
@@ -162,6 +166,7 @@ To search globally, use a namespace like `@dev:` that points to a broader root.
 ## Output Paths
 
 Paths are returned in **smart format**:
+
 - **In-project files**: Relative to project root (e.g., `src/components/Button.tsx`)
 - **Outside project**: Absolute path (e.g., `~/.config/claude/settings.json`)
 
@@ -185,7 +190,7 @@ function formatPath(absolutePath: string, projectRoot: string): string {
 Claude Code invokes the file picker with JSON via stdin:
 
 ```json
-{"query": "src/comp"}
+{ "query": "src/comp" }
 ```
 
 ### Processing
@@ -240,22 +245,22 @@ Three distinct prefix types:
 
 Pre-defined filter sets from config. Resolved to explicit glob patterns.
 
-| Prefix | Configured Pattern | Example Match |
-|--------|-------------------|---------------|
-| `@claude:` | `[".claude/**", "**/claude/**"]` | `.claude/settings.json` |
-| `@docs:` | `["docs/**", "*.md", "README*"]` | `docs/api.md` |
-| `@dev:` | `"~/Developer"` | `~/Developer/project/...` |
-| `@outfitter:` | `"~/Developer/outfitter"` | Custom namespace |
+| Prefix        | Configured Pattern               | Example Match             |
+| ------------- | -------------------------------- | ------------------------- |
+| `@claude:`    | `[".claude/**", "**/claude/**"]` | `.claude/settings.json`   |
+| `@docs:`      | `["docs/**", "*.md", "README*"]` | `docs/api.md`             |
+| `@dev:`       | `"~/Developer"`                  | `~/Developer/project/...` |
+| `@outfitter:` | `"~/Developer/outfitter"`        | Custom namespace          |
 
 ### Folder Globs: `@/folder:`
 
 Dynamic pattern matching for a **single folder name**. Matches both `folder/` and `.folder/` variants.
 
-| Prefix | Expands To | Example Match |
-|--------|------------|---------------|
+| Prefix          | Expands To                         | Example Match               |
+| --------------- | ---------------------------------- | --------------------------- |
 | `@/components:` | `**/{components,.components}/**/*` | `src/components/Button.tsx` |
-| `@/hooks:` | `**/{hooks,.hooks}/**/*` | `lib/.hooks/useAuth.ts` |
-| `@/claude:` | `**/{claude,.claude}/**/*` | `.claude/settings.json` |
+| `@/hooks:`      | `**/{hooks,.hooks}/**/*`           | `lib/.hooks/useAuth.ts`     |
+| `@/claude:`     | `**/{claude,.claude}/**/*`         | `.claude/settings.json`     |
 
 **Note**: Only single-segment folder names are supported. `@/src/components:` is invalid.
 
@@ -263,15 +268,16 @@ Dynamic pattern matching for a **single folder name**. Matches both `folder/` an
 
 Filter by file extension directly in the query.
 
-| Prefix | Meaning | Example Match |
-|--------|---------|---------------|
-| `@*.md` | All markdown files | `README.md`, `docs/api.md` |
-| `@*.ts` | All TypeScript files | `src/index.ts` |
-| `@*.json` | All JSON files | `package.json` |
+| Prefix    | Meaning              | Example Match              |
+| --------- | -------------------- | -------------------------- |
+| `@*.md`   | All markdown files   | `README.md`, `docs/api.md` |
+| `@*.ts`   | All TypeScript files | `src/index.ts`             |
+| `@*.json` | All JSON files       | `package.json`             |
 
 ### Escaping
 
 Use `@@` to search for a literal `@` character:
+
 - `@@types` searches for files containing `@types`
 
 ### Parsing Logic
@@ -515,15 +521,15 @@ function isFTSSyntaxError(err: Error): boolean {
 
 ### Error Scenarios
 
-| Scenario | Behavior |
-|----------|----------|
-| Database locked/corrupted | Fall back to `fd` search |
-| `fd` not installed | Return empty results |
-| Git not available | Skip git frecency, use index only |
-| Query timeout (>100ms) | Return partial results or `fd` fallback |
-| Index in progress | Query stale index (WAL allows concurrent reads) |
-| FTS5 syntax error | Escape special chars and retry |
-| Invalid TOML config | Use defaults, log warning |
+| Scenario                  | Behavior                                        |
+| ------------------------- | ----------------------------------------------- |
+| Database locked/corrupted | Fall back to `fd` search                        |
+| `fd` not installed        | Return empty results                            |
+| Git not available         | Skip git frecency, use index only               |
+| Query timeout (>100ms)    | Return partial results or `fd` fallback         |
+| Index in progress         | Query stale index (WAL allows concurrent reads) |
+| FTS5 syntax error         | Escape special chars and retry                  |
+| Invalid TOML config       | Use defaults, log warning                       |
 
 ## Symlink Handling
 
@@ -671,13 +677,17 @@ Add to `~/.config/claude/settings.json` (or project `.claude/settings.json`):
     "command": "~/.config/claude/file-picker/file-suggestion.sh"
   },
   "hooks": {
-    "SessionStart": [{
-      "matcher": "startup",
-      "hooks": [{
-        "type": "command",
-        "command": "~/.config/claude/file-picker/hooks/session-start.sh"
-      }]
-    }]
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.config/claude/file-picker/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
@@ -705,16 +715,19 @@ bun run ~/.config/claude/file-picker/hooks/session-start.ts &
 ## Future Enhancements
 
 ### Phase 2
+
 - **Claude session tracking** — Log files accessed during sessions for better frecency
 - **Human vs Claude weighting** — Distinguish git commits by author (Claude co-author vs human)
 - **File watcher daemon** — Optional background process for real-time index updates
 
 ### Phase 3
+
 - **Lazy indexing** — Only index a project on first `@` invocation
 - **Git-aware invalidation** — Re-index on checkout, pull, merge
 - **Fuzzy matching** — Typo tolerance in queries
 
 ### Phase 4
+
 - **Windows compatibility** — Support Windows paths and filesystems
 - **Cross-machine sync** — Sync frecency data via dotfiles (relative paths for portability)
 - **Team namespaces** — Project-level namespace definitions in `.claude/file-picker.toml`
@@ -722,15 +735,15 @@ bun run ~/.config/claude/file-picker/hooks/session-start.ts &
 
 ## Decisions Made
 
-| Question | Decision | Rationale |
-|----------|----------|-----------|
-| Query scoping | Project-first, always | More intuitive; use namespaces for global search |
-| Output paths | Smart (relative in-project, absolute outside) | Best UX for Claude context |
-| `@/folder:` syntax | Single-segment only | Simpler parsing; covers 99% of use cases |
-| Platform support | macOS/Linux now | Windows deferred to Phase 4 |
-| Latency budget | 100ms easily achievable | Bun + FTS5 benchmarks at ~10ms |
-| Tokenization | `unicode61` without stemmer | Preserves path prefix matching |
-| Schema design | Separate `files_meta` + FTS5 external content | Proper PK, easier updates/deletes |
+| Question           | Decision                                      | Rationale                                        |
+| ------------------ | --------------------------------------------- | ------------------------------------------------ |
+| Query scoping      | Project-first, always                         | More intuitive; use namespaces for global search |
+| Output paths       | Smart (relative in-project, absolute outside) | Best UX for Claude context                       |
+| `@/folder:` syntax | Single-segment only                           | Simpler parsing; covers 99% of use cases         |
+| Platform support   | macOS/Linux now                               | Windows deferred to Phase 4                      |
+| Latency budget     | 100ms easily achievable                       | Bun + FTS5 benchmarks at ~10ms                   |
+| Tokenization       | `unicode61` without stemmer                   | Preserves path prefix matching                   |
+| Schema design      | Separate `files_meta` + FTS5 external content | Proper PK, easier updates/deletes                |
 
 ## Open Questions
 

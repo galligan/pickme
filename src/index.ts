@@ -34,6 +34,7 @@ import {
   openDatabase,
   closeDatabase,
   searchFiles as dbSearchFiles,
+  listFiles as dbListFiles,
   listFilesByExtension as dbListFilesByExtension,
   upsertFiles,
   deleteFiles,
@@ -46,29 +47,16 @@ import {
   type FrecencyRecord as DbFrecencyRecord,
   type WatchedRoot,
 } from './db'
-import {
-  loadConfig,
-  getDepthForRoot,
-  expandTilde,
-  type Config,
-} from './config'
+import { loadConfig, getDepthForRoot, expandTilde, type Config } from './config'
 import { debugLog } from './utils'
-import {
-  parseQuery,
-  resolvePrefix,
-  type ParseResult,
-  type ResolveResult,
-} from './prefix'
+import { parseQuery, resolvePrefix, type ParseResult, type ResolveResult } from './prefix'
 import {
   indexDirectory,
   type IndexOptions,
   type IndexResult as IndexerResult,
   type DbOperations,
 } from './indexer'
-import {
-  buildFrecencyRecords,
-  type FrecencyRecord,
-} from './frecency'
+import { buildFrecencyRecords, type FrecencyRecord } from './frecency'
 import { isGitRepo } from './git'
 import { ensureError } from './errors'
 
@@ -178,7 +166,7 @@ export interface FilePicker {
    * @param root - Directory path to refresh
    * @returns Refresh result with statistics
    */
-  refreshIndex(root: string): Promise<RefreshResult>
+  refreshIndex(root: string, options?: { force?: boolean }): Promise<RefreshResult>
 
   /**
    * Closes the file picker and releases resources.
@@ -197,14 +185,15 @@ function createDbOperations(db: Database): DbOperations {
   return {
     upsertFiles: (database, files) => upsertFiles(database as Database, files),
     deleteFiles: (database, paths) => deleteFiles(database as Database, paths),
-    updateWatchedRoot: (database, root) => updateWatchedRoot(database as Database, {
-      ...root,
-      // Convert fileCount to nullable for db layer
-      fileCount: root.fileCount,
-    }),
-    getWatchedRoots: (database) => {
+    updateWatchedRoot: (database, root) =>
+      updateWatchedRoot(database as Database, {
+        ...root,
+        // Convert fileCount to nullable for db layer
+        fileCount: root.fileCount,
+      }),
+    getWatchedRoots: database => {
       // Convert from db types (nullable) to indexer types (non-nullable)
-      return getWatchedRoots(database as Database).map((wr) => ({
+      return getWatchedRoots(database as Database).map(wr => ({
         root: wr.root,
         maxDepth: wr.maxDepth,
         lastIndexed: wr.lastIndexed,
@@ -213,11 +202,9 @@ function createDbOperations(db: Database): DbOperations {
     },
     getFilesForRoot: (database, root) => {
       const rows = (database as Database)
-        .query<{ path: string }, [string]>(
-          'SELECT path FROM files_meta WHERE root = ?'
-        )
+        .query<{ path: string }, [string]>('SELECT path FROM files_meta WHERE root = ?')
         .all(root)
-      return rows.map((r) => r.path)
+      return rows.map(r => r.path)
     },
   }
 }
@@ -253,7 +240,21 @@ class FilePickerImpl implements FilePicker {
 
     // Parse query for prefixes
     const parsed = parseQuery(query, this.config)
-    const searchQuery = parsed.searchQuery
+    let searchQuery = parsed.searchQuery
+
+    const { pathFilters, patternFilters } = this.resolveFilters(parsed, {
+      projectRoot: projectRoot ?? '',
+      additionalDirs,
+    })
+
+    let isFuzzy = false
+    if (searchQuery.startsWith('~')) {
+      isFuzzy = true
+      searchQuery = searchQuery.slice(1).trim()
+    } else if (!parsed.prefix && query.startsWith('@~')) {
+      isFuzzy = true
+      searchQuery = query.slice(2).trim()
+    }
 
     // If we have only a prefix with no search query, handle special cases
     if (!searchQuery && parsed.prefix) {
@@ -262,13 +263,31 @@ class FilePickerImpl implements FilePicker {
       if (parsed.prefix.type === 'glob') {
         return this.searchWithGlobFilter(parsed.prefix.pattern, options)
       }
+
+      if (parsed.prefix.type === 'folder') {
+        const folderQuery = parsed.prefix.folder.startsWith('.')
+          ? parsed.prefix.folder.slice(1)
+          : parsed.prefix.folder
+        if (folderQuery) {
+          searchQuery = folderQuery
+        }
+      }
+
+      if (parsed.prefix.type === 'namespace') {
+        searchQuery = parsed.prefix.name
+      }
     }
 
-    // Build path filters from prefix
-    const pathFilters = this.buildPathFilters(parsed, {
-      projectRoot: projectRoot ?? '',
-      additionalDirs,
-    })
+    if (isFuzzy) {
+      if (!searchQuery) {
+        return []
+      }
+      return this.searchWithFuzzy(searchQuery, {
+        pathFilters,
+        patternFilters,
+        limit,
+      })
+    }
 
     // Search the database
     const results = dbSearchFiles(this.db, searchQuery || query, {
@@ -276,12 +295,28 @@ class FilePickerImpl implements FilePicker {
       limit,
     })
 
-    return results.map((r) => ({
+    const mapped = results.map(r => ({
       path: r.path,
       filename: r.filename,
       relativePath: r.relativePath,
       score: r.score,
     }))
+
+    const filtered =
+      patternFilters.length === 0 ? mapped : this.filterResultsByPatterns(mapped, patternFilters)
+
+    if (filtered.length === 0) {
+      const fallbackQuery = searchQuery || query
+      if (fallbackQuery.trim()) {
+        return this.searchWithFuzzy(fallbackQuery, {
+          pathFilters,
+          patternFilters,
+          limit,
+        })
+      }
+    }
+
+    return filtered
   }
 
   /**
@@ -303,7 +338,7 @@ class FilePickerImpl implements FilePicker {
       limit,
     })
 
-    return results.map((r) => ({
+    return results.map(r => ({
       path: r.path,
       filename: r.filename,
       relativePath: r.relativePath,
@@ -311,39 +346,104 @@ class FilePickerImpl implements FilePicker {
     }))
   }
 
+  private async searchWithFuzzy(
+    query: string,
+    options: { pathFilters: readonly string[]; patternFilters: readonly string[]; limit: number }
+  ): Promise<readonly FilePickerSearchResult[]> {
+    const { pathFilters, patternFilters, limit } = options
+    const candidateLimit = Math.min(Math.max(limit * 50, 500), 5000)
+    const candidates = dbListFiles(this.db, {
+      pathFilters: pathFilters.length > 0 ? pathFilters : undefined,
+      limit: candidateLimit,
+    })
+
+    const filtered =
+      patternFilters.length === 0
+        ? candidates
+        : this.filterResultsByPatterns(candidates, patternFilters)
+
+    const scored = filtered
+      .map(result => {
+        const rel = normalizeRelativePath(result.relativePath ?? result.path)
+        const name = result.filename
+        const scorePath = fuzzyScoreTokens(query, rel)
+        const scoreName = fuzzyScoreTokens(query, name)
+        const best = Math.max(scorePath, scoreName * 1.2)
+        if (best < 0) {
+          return null
+        }
+        const combined = best + result.score * 0.2
+        return {
+          path: result.path,
+          filename: result.filename,
+          relativePath: result.relativePath,
+          score: combined,
+        }
+      })
+      .filter(Boolean) as FilePickerSearchResult[]
+
+    scored.sort((a, b) => b.score - a.score || a.relativePath.localeCompare(b.relativePath))
+
+    return scored.slice(0, limit)
+  }
+
   /**
-   * Builds path filters from parsed prefix.
+   * Resolves prefix filters into path filters and pattern filters.
    */
-  private buildPathFilters(
+  private resolveFilters(
     parsed: ParseResult,
     context: { projectRoot: string; additionalDirs: readonly string[] }
-  ): string[] {
+  ): { pathFilters: string[]; patternFilters: string[] } {
     if (!parsed.prefix) {
-      // No prefix - use project root if provided
-      if (context.projectRoot) {
-        return [context.projectRoot]
+      return {
+        pathFilters: context.projectRoot ? [context.projectRoot] : [],
+        patternFilters: [],
       }
-      return []
     }
 
     try {
-      const resolved = resolvePrefix(parsed.prefix, {
-        projectRoot: context.projectRoot,
-        additionalDirs: context.additionalDirs,
-      }, this.config)
+      const resolved = resolvePrefix(
+        parsed.prefix,
+        {
+          projectRoot: context.projectRoot,
+          additionalDirs: context.additionalDirs,
+        },
+        this.config
+      )
 
       if (resolved.roots) {
-        return [...resolved.roots]
+        return { pathFilters: [...resolved.roots], patternFilters: [] }
       }
 
-      // For pattern-based filters, we'll handle them differently
-      // by filtering results post-search
-      return context.projectRoot ? [context.projectRoot] : []
+      if (resolved.patterns) {
+        return {
+          pathFilters: context.projectRoot ? [context.projectRoot] : [],
+          patternFilters: [...resolved.patterns],
+        }
+      }
     } catch (err) {
-      // Unknown namespace or other error - fall back to no filter
       debugLog('prefix', 'Failed to resolve namespace', err)
-      return context.projectRoot ? [context.projectRoot] : []
     }
+
+    return {
+      pathFilters: context.projectRoot ? [context.projectRoot] : [],
+      patternFilters: [],
+    }
+  }
+
+  private filterResultsByPatterns(
+    results: readonly FilePickerSearchResult[],
+    patterns: readonly string[]
+  ): readonly FilePickerSearchResult[] {
+    const matchers = buildPatternMatchers(patterns)
+    if (matchers.length === 0) {
+      return results
+    }
+
+    return results.filter(result => {
+      const rel = normalizeRelativePath(result.relativePath ?? result.path)
+      return matchers.some(matcher => matcher.match(rel))
+    })
   }
 
   async ensureIndexed(roots: readonly string[]): Promise<IndexResult> {
@@ -379,6 +479,8 @@ class FilePickerImpl implements FilePicker {
       try {
         const indexOptions: IndexOptions = {
           maxDepth: getDepthForRoot(this.config, expandedRoot),
+          includeHidden: this.config.index.include_hidden,
+          includeGitignored: !this.config.index.exclude.gitignored_files,
           exclude: [...this.config.index.exclude.patterns],
           incremental: false,
           maxFiles: this.config.index.limits.max_files_per_root,
@@ -418,36 +520,33 @@ class FilePickerImpl implements FilePicker {
     }
   }
 
-  async refreshIndex(root: string): Promise<RefreshResult> {
+  async refreshIndex(root: string, options: { force?: boolean } = {}): Promise<RefreshResult> {
     const startTime = performance.now()
     const errors: string[] = []
     let filesIndexed = 0
+    const force = options.force === true
 
     const expandedRoot = expandTilde(root)
 
     try {
       // Get existing watched root data
       const watchedRoots = getWatchedRoots(this.db)
-      const existing = watchedRoots.find((wr) => wr.root === expandedRoot)
+      const existing = watchedRoots.find(wr => wr.root === expandedRoot)
 
       const indexOptions: IndexOptions = {
         maxDepth: getDepthForRoot(this.config, expandedRoot),
+        includeHidden: this.config.index.include_hidden,
+        includeGitignored: !this.config.index.exclude.gitignored_files,
         exclude: [...this.config.index.exclude.patterns],
-        incremental: true,
+        incremental: !force,
         maxFiles: this.config.index.limits.max_files_per_root,
-        lastIndexed: existing?.lastIndexed ?? null,
+        lastIndexed: force ? null : (existing?.lastIndexed ?? null),
       }
 
       // Get all configured roots for symlink checking
       const allRoots = this.config.index.roots.map(expandTilde)
 
-      const indexResult = await indexDirectory(
-        root,
-        indexOptions,
-        this.db,
-        this.dbOps,
-        allRoots
-      )
+      const indexResult = await indexDirectory(root, indexOptions, this.db, this.dbOps, allRoots)
 
       filesIndexed = indexResult.filesIndexed
       errors.push(...indexResult.errors)
@@ -457,7 +556,7 @@ class FilePickerImpl implements FilePicker {
         root: expandedRoot,
         maxDepth: indexOptions.maxDepth ?? 10,
         lastIndexed: Date.now(),
-        fileCount: (existing?.fileCount ?? 0) + filesIndexed,
+        fileCount: force ? filesIndexed : (existing?.fileCount ?? 0) + filesIndexed,
       })
 
       // Update frecency data
@@ -492,7 +591,7 @@ class FilePickerImpl implements FilePicker {
 
       if (frecencyRecords.length > 0) {
         // Convert to database format
-        const dbRecords: DbFrecencyRecord[] = frecencyRecords.map((r) => ({
+        const dbRecords: DbFrecencyRecord[] = frecencyRecords.map(r => ({
           path: r.path,
           gitRecency: r.gitRecency,
           gitFrequency: r.gitFrequency,
@@ -511,6 +610,83 @@ class FilePickerImpl implements FilePicker {
   async close(): Promise<void> {
     closeDatabase(this.db)
   }
+}
+
+function normalizeRelativePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/\/+/g, '/')
+}
+
+function buildPatternMatchers(
+  patterns: readonly string[]
+): Array<{ match: (path: string) => boolean }> {
+  const matchers: Array<{ match: (path: string) => boolean }> = []
+  for (const pattern of patterns) {
+    if (!pattern) continue
+    const candidates = pattern.includes('/') ? [pattern] : [pattern, `**/${pattern}`]
+    for (const candidate of candidates) {
+      try {
+        matchers.push(new Bun.Glob(candidate))
+      } catch {
+        // Ignore invalid patterns
+      }
+    }
+  }
+  return matchers
+}
+
+function fuzzyScoreTokens(query: string, target: string): number {
+  const tokens = query.trim().split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) {
+    return -1
+  }
+  let total = 0
+  for (const token of tokens) {
+    const score = fuzzyScore(token, target)
+    if (score < 0) {
+      return -1
+    }
+    total += score
+  }
+  return total
+}
+
+function fuzzyScore(query: string, target: string): number {
+  const needle = query.toLowerCase()
+  const hay = target.toLowerCase()
+  let score = 0
+  let lastIndex = -1
+  let streak = 0
+
+  for (let i = 0; i < needle.length; i++) {
+    const ch = needle[i]
+    const idx = hay.indexOf(ch, lastIndex + 1)
+    if (idx === -1) {
+      return -1
+    }
+
+    const prev = idx > 0 ? hay[idx - 1] : ''
+    const isBoundary =
+      prev === '' || prev === '/' || prev === '_' || prev === '-' || prev === ' ' || prev === '.'
+    if (idx === lastIndex + 1) {
+      streak += 1
+    } else {
+      streak = 1
+    }
+
+    score += 1
+    if (isBoundary) {
+      score += 3
+    }
+    score += Math.min(streak, 5)
+
+    lastIndex = idx
+  }
+
+  // Prefer shorter paths and earlier matches.
+  score += Math.max(0, 20 - hay.length / 10)
+  score += Math.max(0, 10 - lastIndex / 10)
+
+  return score
 }
 
 // ============================================================================
@@ -538,9 +714,7 @@ class FilePickerImpl implements FilePicker {
  * await picker.close();
  * ```
  */
-export async function createFilePicker(
-  options: FilePickerOptions = {}
-): Promise<FilePicker> {
+export async function createFilePicker(options: FilePickerOptions = {}): Promise<FilePicker> {
   const { dbPath = getDefaultDbPath(), configPath } = options
 
   // Load configuration
@@ -557,28 +731,11 @@ export async function createFilePicker(
 // ============================================================================
 
 // Re-export shared types from canonical location
-export type {
-  FileMeta,
-  FrecencyRecord,
-  WatchedRoot,
-  SearchResult,
-  SearchOptions,
-} from './types'
+export type { FileMeta, FrecencyRecord, WatchedRoot, SearchResult, SearchOptions } from './types'
 
 // Re-export types that consumers might need
-export type {
-  Config,
-  WeightsConfig,
-  NamespacesConfig,
-  PrioritiesConfig,
-} from './config'
+export type { Config, WeightsConfig, NamespacesConfig, PrioritiesConfig } from './config'
 
-export type {
-  RankedResult,
-} from './frecency'
+export type { RankedResult } from './frecency'
 
-export type {
-  Prefix,
-  ParseResult,
-  ResolveResult,
-} from './prefix'
+export type { Prefix, ParseResult, ResolveResult } from './prefix'

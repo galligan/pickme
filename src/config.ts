@@ -106,6 +106,10 @@ export interface IncludeConfig {
 export interface IndexConfig {
   /** Root directories to include in global index. */
   readonly roots: readonly string[]
+  /** Specific directories to skip even if under an indexed root. */
+  readonly disabled: readonly string[]
+  /** Whether to include hidden files/directories (dotfiles). Default: false */
+  readonly include_hidden: boolean
   /** Exclusion patterns applied globally. */
   readonly exclude: ExcludeConfig
   /** Inclusion patterns (overrides excludes). */
@@ -120,6 +124,8 @@ export interface IndexConfig {
  * Complete file picker configuration.
  */
 export interface Config {
+  /** Whether pickme is active (default: true). */
+  readonly active: boolean
   /** Frecency weight multipliers. */
   readonly weights: WeightsConfig
   /** Named namespace definitions. */
@@ -139,6 +145,7 @@ export interface Config {
  * These values align with the spec's recommended defaults.
  */
 export const DEFAULT_CONFIG: Config = {
+  active: true,
   weights: {
     git_recency: 1.0,
     git_frequency: 0.5,
@@ -151,25 +158,13 @@ export const DEFAULT_CONFIG: Config = {
     config: '~/.config',
   },
   priorities: {
-    high: [
-      'CLAUDE.md',
-      'package.json',
-      'Cargo.toml',
-      '*.ts',
-      '*.tsx',
-      'src/**',
-    ],
-    low: [
-      'node_modules/**',
-      'dist/**',
-      'build/**',
-      '*.lock',
-      '.git/**',
-      '*.min.js',
-    ],
+    high: ['CLAUDE.md', 'package.json', 'Cargo.toml', '*.ts', '*.tsx', 'src/**'],
+    low: ['node_modules/**', 'dist/**', 'build/**', '*.lock', '.git/**', '*.min.js'],
   },
   index: {
     roots: ['~/Developer', '~/.config'],
+    disabled: [],
+    include_hidden: false,
     exclude: {
       patterns: [
         // Version control
@@ -206,8 +201,21 @@ export const DEFAULT_CONFIG: Config = {
         // Temp files
         '.tmp',
         '.temp',
+        // OS metadata
+        '.DS_Store',
+        '.AppleDouble',
+        '.LSOverride',
+        '._*',
+        '.Spotlight-V100',
+        '.Trashes',
+        '.Trash-*',
+        '.fseventsd',
+        '.TemporaryItems',
+        '.apdisk',
+        '.directory',
+        '.nfs*',
       ],
-      gitignored_files: false,
+      gitignored_files: true,
     },
     include: {
       patterns: [],
@@ -241,16 +249,31 @@ function expandNamespaces(namespaces: NamespacesConfig): NamespacesConfig {
   return result
 }
 
+function dedupeStrings(values: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    if (!seen.has(value)) {
+      seen.add(value)
+      result.push(value)
+    }
+  }
+  return result
+}
+
 /**
  * Creates a copy of the default config with all ~ paths expanded.
  */
 function getExpandedDefaults(): Config {
   return {
+    active: DEFAULT_CONFIG.active,
     weights: { ...DEFAULT_CONFIG.weights },
     namespaces: expandNamespaces(DEFAULT_CONFIG.namespaces),
     priorities: { ...DEFAULT_CONFIG.priorities },
     index: {
       roots: DEFAULT_CONFIG.index.roots.map(expandTilde),
+      disabled: DEFAULT_CONFIG.index.disabled.map(expandTilde),
+      include_hidden: DEFAULT_CONFIG.index.include_hidden,
       exclude: {
         patterns: [...DEFAULT_CONFIG.index.exclude.patterns],
         gitignored_files: DEFAULT_CONFIG.index.exclude.gitignored_files,
@@ -274,13 +297,26 @@ const CONFIG_PATH = join(getConfigDir(), 'config.toml')
  * Uses unknown for flexible parsing before type narrowing.
  */
 interface RawConfig {
+  active?: boolean
   weights?: Partial<WeightsConfig>
   namespaces?: Record<string, string | string[]>
   priorities?: Partial<PrioritiesConfig>
+  roots?: Array<{
+    path?: string
+    namespace?: string
+    disabled?: boolean
+  }>
+  excludes?: Array<{
+    pattern?: string
+  }>
   index?: {
     roots?: string[]
+    disabled?: string[]
     exclude?: { patterns?: string[]; gitignored_files?: boolean }
     include?: { patterns?: string[] }
+    max_depth?: number
+    include_gitignored?: boolean
+    include_hidden?: boolean
     depth?: Record<string, number>
     limits?: Partial<IndexLimitsConfig>
   }
@@ -293,7 +329,11 @@ function validateWeights(raw: Partial<WeightsConfig> | undefined): WeightsConfig
   const defaults = DEFAULT_CONFIG.weights
   return {
     git_recency: validateNumber(raw?.git_recency, defaults.git_recency, 'weights.git_recency'),
-    git_frequency: validateNumber(raw?.git_frequency, defaults.git_frequency, 'weights.git_frequency'),
+    git_frequency: validateNumber(
+      raw?.git_frequency,
+      defaults.git_frequency,
+      'weights.git_frequency'
+    ),
     git_status: validateNumber(raw?.git_status, defaults.git_status, 'weights.git_status'),
   }
 }
@@ -314,25 +354,117 @@ function validateNumber(value: unknown, defaultValue: number, field: string): nu
   return value
 }
 
+function validateBoolean(
+  value: unknown,
+  defaultValue: boolean | undefined,
+  field: string
+): boolean | undefined {
+  if (value === undefined || value === null) {
+    return defaultValue
+  }
+  if (typeof value !== 'boolean') {
+    throw ConfigError.validationError(`${field} must be a boolean`)
+  }
+  return value
+}
+
+function parseRootEntries(rawRoots: RawConfig['roots']): {
+  roots: string[]
+  disabled: string[]
+  namespaces: NamespacesConfig
+} | null {
+  if (rawRoots === undefined) {
+    return null
+  }
+  if (!Array.isArray(rawRoots)) {
+    throw ConfigError.validationError('roots must be an array of tables')
+  }
+
+  const roots: string[] = []
+  const disabled: string[] = []
+  const namespaces: Record<string, NamespaceValue> = {}
+
+  for (const entry of rawRoots) {
+    if (!entry || typeof entry !== 'object') {
+      throw ConfigError.validationError('roots entries must be tables with a path')
+    }
+    const path = (entry as { path?: unknown }).path
+    const namespace = (entry as { namespace?: unknown }).namespace
+    const disabledValue = (entry as { disabled?: unknown }).disabled
+
+    if (typeof path !== 'string' || path.trim().length === 0) {
+      throw ConfigError.validationError('roots.path must be a non-empty string')
+    }
+
+    const expandedPath = expandTilde(path)
+    roots.push(expandedPath)
+
+    if (disabledValue !== undefined) {
+      if (typeof disabledValue !== 'boolean') {
+        throw ConfigError.validationError('roots.disabled must be a boolean')
+      }
+      if (disabledValue) {
+        disabled.push(expandedPath)
+      }
+    }
+
+    if (namespace !== undefined) {
+      if (typeof namespace !== 'string' || namespace.trim().length === 0) {
+        throw ConfigError.validationError('roots.namespace must be a non-empty string')
+      }
+      namespaces[namespace] = expandedPath
+    }
+  }
+
+  return {
+    roots: dedupeStrings(roots),
+    disabled: dedupeStrings(disabled),
+    namespaces,
+  }
+}
+
+function parseExcludeEntries(rawExcludes: RawConfig['excludes']): string[] | null {
+  if (rawExcludes === undefined) {
+    return null
+  }
+  if (!Array.isArray(rawExcludes)) {
+    throw ConfigError.validationError('excludes must be an array of tables')
+  }
+
+  const patterns: string[] = []
+
+  for (const entry of rawExcludes) {
+    if (!entry || typeof entry !== 'object') {
+      throw ConfigError.validationError('excludes entries must be tables with a pattern')
+    }
+    const pattern = (entry as { pattern?: unknown }).pattern
+    if (typeof pattern !== 'string' || pattern.trim().length === 0) {
+      throw ConfigError.validationError('excludes.pattern must be a non-empty string')
+    }
+    patterns.push(pattern)
+  }
+
+  return dedupeStrings(patterns)
+}
+
 /**
  * Validates namespace configuration.
  * Expands ~ in all path patterns.
  */
 function validateNamespaces(raw: Record<string, string | string[]> | undefined): NamespacesConfig {
-  if (!raw) {
-    return expandNamespaces(DEFAULT_CONFIG.namespaces)
+  const defaults = expandNamespaces(DEFAULT_CONFIG.namespaces)
+  if (!raw || Object.keys(raw).length === 0) {
+    return defaults
   }
 
-  const result: Record<string, string | string[]> = {}
+  const result: Record<string, string | string[]> = { ...defaults }
   for (const [name, value] of Object.entries(raw)) {
     if (typeof value === 'string') {
       result[name] = expandTilde(value)
-    } else if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
+    } else if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
       result[name] = value.map(expandTilde)
     } else {
-      throw ConfigError.validationError(
-        `namespaces.${name} must be a string or array of strings`
-      )
+      throw ConfigError.validationError(`namespaces.${name} must be a string or array of strings`)
     }
   }
   return result
@@ -363,7 +495,7 @@ function validateStringArray(
   if (!Array.isArray(value)) {
     throw ConfigError.validationError(`${field} must be an array`)
   }
-  if (!value.every((v) => typeof v === 'string')) {
+  if (!value.every(v => typeof v === 'string')) {
     throw ConfigError.validationError(`${field} must contain only strings`)
   }
   return value as string[]
@@ -378,24 +510,62 @@ function validateIndex(raw: RawConfig['index'] | undefined): IndexConfig {
 
   // Validate and expand roots
   const rawRoots = raw?.roots ?? defaults.roots
-  if (!Array.isArray(rawRoots) || !rawRoots.every((v) => typeof v === 'string')) {
+  if (!Array.isArray(rawRoots) || !rawRoots.every(v => typeof v === 'string')) {
     throw ConfigError.validationError('index.roots must be an array of strings')
   }
   const roots = rawRoots.map(expandTilde)
 
+  // Validate and expand disabled directories
+  const rawDisabled = raw?.disabled ?? defaults.disabled
+  if (!Array.isArray(rawDisabled) || !rawDisabled.every(v => typeof v === 'string')) {
+    throw ConfigError.validationError('index.disabled must be an array of strings')
+  }
+  const disabled = rawDisabled.map(expandTilde)
+
   // Validate exclude patterns
   const rawExcludePatterns = raw?.exclude?.patterns ?? defaults.exclude.patterns
-  const excludePatterns = validateStringArray(rawExcludePatterns, defaults.exclude.patterns, 'index.exclude.patterns')
-  const gitignored = raw?.exclude?.gitignored_files ?? defaults.exclude.gitignored_files
+  const excludePatterns = validateStringArray(
+    rawExcludePatterns,
+    defaults.exclude.patterns,
+    'index.exclude.patterns'
+  )
+  const rawExcludeGitignored = raw?.exclude?.gitignored_files
+  const rawIncludeGitignored = raw?.include_gitignored
+  let gitignored = defaults.exclude.gitignored_files
+  if (rawExcludeGitignored !== undefined) {
+    gitignored = validateBoolean(
+      rawExcludeGitignored,
+      defaults.exclude.gitignored_files,
+      'index.exclude.gitignored_files'
+    )
+  } else if (rawIncludeGitignored !== undefined) {
+    const includeGitignored = validateBoolean(
+      rawIncludeGitignored,
+      !defaults.exclude.gitignored_files,
+      'index.include_gitignored'
+    )
+    gitignored = !includeGitignored
+  }
+  const includeHidden =
+    validateBoolean(raw?.include_hidden, defaults.include_hidden, 'index.include_hidden') ?? false
 
   // Validate include patterns
   const rawIncludePatterns = raw?.include?.patterns ?? defaults.include.patterns
-  const includePatterns = validateStringArray(rawIncludePatterns, defaults.include.patterns, 'index.include.patterns')
+  const includePatterns = validateStringArray(
+    rawIncludePatterns,
+    defaults.include.patterns,
+    'index.include.patterns'
+  )
 
   // Validate depth configuration
   const rawDepth = raw?.depth ?? {}
+  const depthDefaultValue = rawDepth.default ?? raw?.max_depth
   const depth: Record<string, number> = {
-    default: validateNumber(rawDepth.default, defaults.depth.default, 'index.depth.default'),
+    default: validateNumber(
+      depthDefaultValue,
+      defaults.depth.default,
+      rawDepth.default !== undefined ? 'index.depth.default' : 'index.max_depth'
+    ),
   }
 
   for (const [key, value] of Object.entries(rawDepth)) {
@@ -421,6 +591,8 @@ function validateIndex(raw: RawConfig['index'] | undefined): IndexConfig {
 
   return {
     roots,
+    disabled,
+    include_hidden: includeHidden,
     exclude: { patterns: excludePatterns, gitignored_files: gitignored },
     include: { patterns: includePatterns },
     depth: depth as DepthConfig,
@@ -435,11 +607,61 @@ function validateIndex(raw: RawConfig['index'] | undefined): IndexConfig {
 function validateConfig(raw: unknown): Config {
   if (raw !== null && typeof raw === 'object') {
     const rawConfig = raw as RawConfig
-    return {
+    const baseConfig: Config = {
+      active: validateBoolean(rawConfig.active, true, 'active') ?? true,
       weights: validateWeights(rawConfig.weights),
       namespaces: validateNamespaces(rawConfig.namespaces),
       priorities: validatePriorities(rawConfig.priorities),
       index: validateIndex(rawConfig.index),
+    }
+
+    const rootEntries = parseRootEntries(rawConfig.roots)
+    const hasRootEntries = rootEntries !== null
+    const hasIndexRoots = Array.isArray(rawConfig.index?.roots)
+    const hasIndexDisabled = Array.isArray(rawConfig.index?.disabled)
+
+    let namespaces = baseConfig.namespaces
+    let roots = baseConfig.index.roots
+    let disabled = baseConfig.index.disabled
+
+    if (hasRootEntries && rootEntries) {
+      roots = rootEntries.roots
+      disabled = rootEntries.disabled
+      namespaces = { ...namespaces, ...rootEntries.namespaces }
+
+      if (hasIndexRoots) {
+        roots = dedupeStrings([...roots, ...baseConfig.index.roots])
+      }
+      if (hasIndexDisabled) {
+        disabled = dedupeStrings([...disabled, ...baseConfig.index.disabled])
+      }
+    }
+
+    const excludeEntries = parseExcludeEntries(rawConfig.excludes)
+    const hasExcludeEntries = excludeEntries !== null
+    const hasIndexExclude = Array.isArray(rawConfig.index?.exclude?.patterns)
+
+    let excludePatterns = baseConfig.index.exclude.patterns
+    if (hasExcludeEntries && excludeEntries) {
+      excludePatterns = dedupeStrings([...excludePatterns, ...excludeEntries])
+    }
+
+    if (hasIndexExclude) {
+      excludePatterns = baseConfig.index.exclude.patterns
+    }
+
+    return {
+      ...baseConfig,
+      namespaces,
+      index: {
+        ...baseConfig.index,
+        roots,
+        disabled,
+        exclude: {
+          ...baseConfig.index.exclude,
+          patterns: excludePatterns,
+        },
+      },
     }
   }
   // Empty or invalid config, use all defaults
@@ -544,10 +766,7 @@ export function getDepthForRoot(config: Config, root: string): number {
  * @param name - The namespace name (without @ prefix)
  * @returns Array of glob patterns, or undefined if namespace not found
  */
-export function resolveNamespace(
-  config: Config,
-  name: string
-): readonly string[] | undefined {
+export function resolveNamespace(config: Config, name: string): readonly string[] | undefined {
   const value = config.namespaces[name]
   if (value === undefined) {
     return undefined

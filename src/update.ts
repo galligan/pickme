@@ -101,7 +101,7 @@ export function getAssetName(): string {
  */
 function parseVersion(version: string): [number, number, number] {
   const clean = version.replace(/^v/, '')
-  const parts = clean.split('.').map((p) => parseInt(p, 10) || 0)
+  const parts = clean.split('.').map(p => parseInt(p, 10) || 0)
   return [parts[0] || 0, parts[1] || 0, parts[2] || 0]
 }
 
@@ -165,9 +165,7 @@ export async function getLatestRelease(): Promise<ReleaseInfo | null> {
  * @param currentVersion - Current installed version
  * @returns Update check result
  */
-export async function checkForUpdate(
-  currentVersion: string
-): Promise<UpdateCheckResult> {
+export async function checkForUpdate(currentVersion: string): Promise<UpdateCheckResult> {
   const release = await getLatestRelease()
 
   if (!release) {
@@ -201,10 +199,7 @@ export async function checkForUpdate(
  * @param onProgress - Optional progress callback (0-100)
  * @returns Path to downloaded file
  */
-async function downloadFile(
-  url: string,
-  onProgress?: (percent: number) => void
-): Promise<string> {
+async function downloadFile(url: string, onProgress?: (percent: number) => void): Promise<string> {
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'pickme-cli',
@@ -330,7 +325,7 @@ export async function performUpdate(
 
     // Find the asset for our platform
     const assetName = getAssetName()
-    const asset = release.assets.find((a) => a.name === assetName)
+    const asset = release.assets.find(a => a.name === assetName)
 
     if (!asset) {
       return {
@@ -343,7 +338,7 @@ export async function performUpdate(
 
     onProgress?.(`Downloading v${latestVersion}...`, 0)
 
-    const tarPath = await downloadFile(asset.browser_download_url, (percent) => {
+    const tarPath = await downloadFile(asset.browser_download_url, percent => {
       onProgress?.(`Downloading v${latestVersion}...`, percent)
     })
 

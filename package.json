@@ -7,7 +7,13 @@
   },
   "scripts": {
     "cli": "bun run cli.ts",
+    "build": "mkdir -p dist && bun build ./cli.ts --compile --outfile dist/pickme-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)",
+    "clean": "rm -rf dist .*.bun-build *.bun-build",
+    "format": "prettier --write . --ignore-path .gitignore",
+    "lint:md": "markdownlint --ignore node_modules --ignore dist --ignore .scratch \"**/*.md\"",
+    "lint": "bun run lint:md && bun run typecheck",
     "query": "bun run src/index.ts",
+    "prepare": "lefthook install",
     "session-start": "bun run hooks/session-start.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
@@ -20,6 +26,9 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "lefthook": "^1.7.15",
+    "markdownlint-cli": "^0.43.0",
+    "prettier": "^3.4.2",
     "typescript": "^5.7.0"
   }
 }
