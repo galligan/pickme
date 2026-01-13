@@ -9,6 +9,7 @@ USAGE
 
 COMMANDS
   search <query>     Search for files matching query
+  query <pattern>    Search files (minimal output for hooks)
   index <path>       Index a directory
   refresh <path>     Refresh an existing index
   status             Show index status and configuration
@@ -35,6 +36,11 @@ SEARCH OPTIONS
   -n, --limit <n>    Maximum results (default: 20)
   --exact            Check if a specific path is indexed
 
+QUERY OPTIONS
+  -C, --cwd <path>   Working directory (default: cwd)
+  -l, --limit <n>    Maximum results (default: 50)
+  --no-daemon        Skip daemon, use CLI directly
+
 CONFIG OPTIONS
   -o, --open         Open config in your editor
   --path             Print the config path
@@ -53,6 +59,8 @@ EXAMPLES
   ${NAME} search "button"
   ${NAME} search "@*.ts" --root ~/project --limit 50
   ${NAME} search "@~settings"
+  ${NAME} query "*.tsx" --cwd ~/project
+  ${NAME} query "config" --no-daemon
   ${NAME} index ~/Developer
   ${NAME} refresh .
   ${NAME} refresh --force .

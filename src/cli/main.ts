@@ -10,6 +10,7 @@ import { cmdInit } from './commands/init'
 import { cmdUpdate } from './commands/update'
 import { cmdBench } from './commands/bench'
 import { cmdServe } from './commands/serve'
+import { cmdQuery } from './commands/query'
 import { NAME } from './constants'
 import { getConfigPath } from '../config'
 import { VERSION } from '../version'
@@ -42,6 +43,8 @@ export async function main(): Promise<number> {
     switch (command) {
       case 'search':
         return await cmdSearch(args, flags, getConfigPath)
+      case 'query':
+        return await cmdQuery(args, flags)
       case 'index':
         return await cmdIndex(args, flags, getConfigPath)
       case 'refresh':
