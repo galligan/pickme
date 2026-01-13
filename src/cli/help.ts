@@ -21,9 +21,14 @@ COMMANDS
   bench              Launch Claude with a debug session or report on sessions
   init               Install pickme hooks into Claude Code
   update             Update pickme to the latest version
+  serve              Start the pickme daemon for fast file search
 
 UPDATE OPTIONS
   -c, --check        Check for updates without installing
+
+DAEMON OPTIONS
+  -i, --idle <mins>  Shutdown after N minutes idle (default: 30)
+  -s, --socket <path>  Custom socket path
 
 SEARCH OPTIONS
   -r, --root <path>  Project root for relative paths (default: cwd)
@@ -66,6 +71,9 @@ EXAMPLES
   ${NAME} bench --session bench-001
   ${NAME} update --check
   ${NAME} update
+  ${NAME} serve
+  ${NAME} serve --idle 60
+  ${NAME} serve -s /tmp/custom.sock
 
 ENVIRONMENT
   PICKME_DEBUG=1     Enable debug logging

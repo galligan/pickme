@@ -9,6 +9,7 @@ import { cmdDebug } from './commands/debug'
 import { cmdInit } from './commands/init'
 import { cmdUpdate } from './commands/update'
 import { cmdBench } from './commands/bench'
+import { cmdServe } from './commands/serve'
 import { NAME } from './constants'
 import { getConfigPath } from '../config'
 import { VERSION } from '../version'
@@ -65,6 +66,8 @@ export async function main(): Promise<number> {
         return await cmdInit(flags)
       case 'update':
         return await cmdUpdate(args, flags)
+      case 'serve':
+        return await cmdServe(args, flags)
       default:
         error(`unknown command: ${command}`, flags)
         if (!flags.json) {
