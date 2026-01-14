@@ -1,5 +1,5 @@
-import { loadConfig, getConfigPath } from '../../config'
-import { ensureConfigFile } from '../../config-template'
+import { loadConfig, getConfigPath } from '../../../packages/core/src/config'
+import { ensureConfigFile } from '../../../packages/core/src/config-template'
 import { error, output, EXIT_ERROR, EXIT_SUCCESS, type OutputOptions } from '../core'
 import { shellEscape, getEffectiveConfigPath } from '../helpers'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'

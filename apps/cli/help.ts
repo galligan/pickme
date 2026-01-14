@@ -1,4 +1,4 @@
-import { VERSION } from '../version'
+import { VERSION } from '../../packages/core/src/version'
 import { NAME } from './constants'
 
 export function showHelp(): void {
@@ -10,8 +10,7 @@ USAGE
 COMMANDS
   search <query>     Search for files matching query
   query <pattern>    Search files (minimal output for hooks)
-  index <path>       Index a directory
-  refresh <path>     Refresh an existing index
+  index <path>       Index a directory (incremental; --force for full re-index)
   status             Show index status and configuration
   roots              List configured roots
   config             Show config path or open in editor
@@ -48,6 +47,14 @@ CONFIG OPTIONS
   --show             Print the config contents
   --validate         Validate config and exit
 
+INIT OPTIONS
+  -g, --global       Install globally (non-interactive)
+  -p, --project      Install for project only (non-interactive)
+  --plugin           Install Claude plugin (default)
+  --no-plugin        Skip plugin installation
+  --hidden           Include hidden files in index
+  --no-hidden        Exclude hidden files (default)
+
 GLOBAL OPTIONS
   --json             Output as JSON
   -q, --quiet        Suppress non-essential output
@@ -63,8 +70,8 @@ EXAMPLES
   ${NAME} query "*.tsx" --cwd ~/project
   ${NAME} query "config" --no-daemon
   ${NAME} index ~/Developer
-  ${NAME} refresh .
-  ${NAME} refresh --force .
+  ${NAME} index .
+  ${NAME} index --force .
   ${NAME} status --json
   ${NAME} roots
   ${NAME} config --show
@@ -85,6 +92,8 @@ EXAMPLES
   ${NAME} serve -s /tmp/custom.sock
   ${NAME} daemon status
   ${NAME} daemon status --json
+  ${NAME} init --global
+  ${NAME} init --global --no-plugin
 
 ENVIRONMENT
   PICKME_DEBUG=1     Enable debug logging

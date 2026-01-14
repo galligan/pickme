@@ -8,9 +8,9 @@
 
 import { existsSync } from 'node:fs'
 import { parseArgs } from 'node:util'
-import { getConfigPath, loadConfig } from '../../config'
-import { sendRequest } from '../../daemon/client'
-import { getSocketPath } from '../../daemon/socket-path'
+import { getConfigPath, loadConfig } from '../../../packages/core/src/config'
+import { sendRequest } from '../../../packages/core/src/daemon/client'
+import { getSocketPath } from '../../../packages/core/src/daemon/socket-path'
 import { EXIT_SUCCESS, type OutputOptions } from '../core'
 import { getEffectiveConfigPath } from '../helpers'
 

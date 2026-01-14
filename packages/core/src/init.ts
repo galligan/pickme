@@ -61,6 +61,12 @@ export interface InitResult {
 
 export interface RunInitOptions {
   debug?: boolean
+  /** Pre-selected scope (skips interactive prompt) */
+  scope?: InstallScope
+  /** Install plugin (skips interactive prompt) */
+  plugin?: boolean
+  /** Include hidden files (skips interactive prompt) */
+  includeHidden?: boolean
 }
 
 // ============================================================================
@@ -892,9 +898,10 @@ const selectTheme = {
   prefix: { idle: green('?'), done: green('✔') },
   icon: { cursor: cyan('\u276F') }, // ❯ in cyan/teal
   style: {
+    message: (text: string) => text, // Override Inquirer's default bold
     disabled: (text: string) => dim(text),
     highlight: (text: string) => text, // No special highlighting, pointer indicates selection
-    help: (text: string) => dim(text + ' • q quit'), // Dim hints + quit
+    help: (text: string) => dim('  ' + text + ' • q quit'), // Dim hints + quit
   },
 }
 
@@ -978,7 +985,13 @@ export async function runInit(
   projectDir: string = process.cwd(),
   options: RunInitOptions = {}
 ): Promise<InitResult> {
-  const { debug = false } = options
+  const {
+    debug = false,
+    scope: preSelectedScope,
+    plugin: preSelectedPlugin,
+    includeHidden: preSelectedHidden,
+  } = options
+  const isNonInteractive = preSelectedScope !== undefined
   const result: InitResult = {
     success: true,
     globalInstalled: false,
@@ -986,10 +999,12 @@ export async function runInit(
     errors: [],
   }
 
-  // Header
-  console.log()
-  console.log(bold('Install Pickme'))
-  console.log(dim('An ultrafast @file suggester for Claude'))
+  // Header (skip in non-interactive mode for cleaner output)
+  if (!isNonInteractive) {
+    console.log()
+    console.log(bold('Install Pickme'))
+    console.log(dim('An ultrafast @file suggester for Claude'))
+  }
 
   // Silent detection phase
   const globalStatus = detectClaudeConfig('global', projectDir)
@@ -1009,12 +1024,14 @@ export async function runInit(
     (globalStatus.hookScriptExists && !globalFullyInstalled) ||
     (projectStatus.hookScriptExists && !projectFullyInstalled)
 
-  if (hasExistingScript) {
+  if (!isNonInteractive && hasExistingScript) {
     console.log()
-    console.log(yellow('Existing file-suggestion.sh will be preserved as file-suggestion.sh.bak'))
+    console.log(yellow('Existing .claude/file-suggestion.sh will be backed up automatically.'))
   }
 
-  console.log()
+  if (!isNonInteractive) {
+    console.log()
+  }
 
   // Check if all options are fully installed
   if (globalFullyInstalled && projectFullyInstalled) {
@@ -1022,62 +1039,80 @@ export async function runInit(
     return result
   }
 
-  // Build choices with styled names
-  // Note: "Project " has trailing space to align parentheses with "Globally"
-  type Choice = {
-    name: string
-    value: InstallScope
-    disabled: boolean | string
+  let selectedScope: InstallScope
+
+  // Non-interactive mode: use pre-selected scope
+  if (isNonInteractive) {
+    selectedScope = preSelectedScope
+    // Check if already installed at requested scope
+    const alreadyInstalled =
+      selectedScope === 'global' ? globalFullyInstalled : projectFullyInstalled
+    if (alreadyInstalled) {
+      console.log(
+        `Pickme is already installed ${selectedScope === 'global' ? 'globally' : 'for this project'}.\n`
+      )
+      return result
+    }
+  } else {
+    // Interactive mode: prompt for scope selection
+    // Build choices with styled names
+    type Choice = {
+      name: string
+      value: InstallScope
+      disabled: boolean | string
+    }
+
+    const choices: Choice[] = [
+      {
+        name: buildChoiceName('Globally (best)', '~/.claude', globalFullyInstalled),
+        value: 'global',
+        disabled: globalFullyInstalled,
+      },
+      {
+        name: buildChoiceName('Project', './.claude', projectFullyInstalled),
+        value: 'project',
+        disabled: projectFullyInstalled,
+      },
+    ]
+
+    // Check if all options are disabled
+    const allDisabled = choices.every(c => c.disabled !== false)
+    if (allDisabled) {
+      console.log('Pickme is already installed in all locations.\n')
+      return result
+    }
+
+    // Prompt for scope selection
+    const scopeChoice = await selectWithQuit<InstallScope>({
+      message: 'Install location:',
+      choices,
+    })
+
+    if (scopeChoice === null) {
+      console.log('\nInstallation cancelled.\n')
+      result.success = false
+      return result
+    }
+
+    selectedScope = scopeChoice
+    console.log()
   }
 
-  const choices: Choice[] = [
-    {
-      name: buildChoiceName('Globally (best)', '~/.claude', globalFullyInstalled),
-      value: 'global',
-      disabled: globalFullyInstalled,
-    },
-    {
-      name: buildChoiceName('Project', './.claude', projectFullyInstalled),
-      value: 'project',
-      disabled: projectFullyInstalled,
-    },
-  ]
-
-  // Check if all options are disabled
-  const allDisabled = choices.every(c => c.disabled !== false)
-  if (allDisabled) {
-    console.log('Pickme is already installed in all locations.\n')
-    return result
-  }
-
-  // Prompt for scope selection
-  const selectedScope = await selectWithQuit<InstallScope>({
-    message: 'Install location:',
-    choices,
-  })
-
-  if (selectedScope === null) {
-    console.log('\nInstallation cancelled.\n')
-    result.success = false
-    return result
-  }
-
-  console.log()
-
-  // Check if we need override confirmation
+  // Check if we need override confirmation (only in interactive mode)
   const needsOverride =
     (selectedScope === 'global' && globalScriptOnly) ||
     (selectedScope === 'project' && projectScriptOnly)
 
-  if (needsOverride) {
+  // Override confirmation only in interactive mode
+  if (!isNonInteractive && needsOverride) {
     const status = selectedScope === 'global' ? globalStatus : projectStatus
     const displayPath = status.hookScriptPath.replace(homedir(), '~')
 
     const confirmed = await selectWithQuit<boolean>({
-      message: `Ok to override ${displayPath}?`,
+      message: `Ok to override ${displayPath}?\n  ${dim('Current file will be saved as file-suggestion.sh.bak')}`,
       choices: [
         {
-          name: `Yes\n  ${dim('Current file will be saved as file-suggestion.sh.bak')}`,
+          name: 'Yes',
           value: true,
           disabled: false,
         },
@@ -1098,54 +1133,66 @@ export async function runInit(
     console.log()
   }
 
-  // Ask about plugin installation
-  const installPluginChoice = await selectWithQuit<boolean>({
-    message: `Install Claude Code plugin for full capability?\n  ${dim('Adds SessionStart hook for background index refresh')}`,
-    choices: [
-      {
-        name: `Yes ${dim('(recommended)')}`,
-        value: true,
-        disabled: false,
-      },
-      {
-        name: `No ${dim('(refresh manually with pickme refresh)')}`,
-        value: false,
-        disabled: false,
-      },
-    ],
-  })
+  let installPluginChoice: boolean
+  let includeHiddenChoice: boolean
 
-  if (installPluginChoice === null) {
-    console.log('\nInstallation cancelled.\n')
-    result.success = false
-    return result
+  if (isNonInteractive) {
+    // Non-interactive: use defaults or pre-selected values
+    installPluginChoice = preSelectedPlugin ?? true
+    includeHiddenChoice = preSelectedHidden ?? false
+  } else {
+    // Interactive: prompt for plugin installation
+    const pluginAnswer = await selectWithQuit<boolean>({
+      message: `Install Claude Code plugin for full capability?\n  ${dim('Adds SessionStart hook for background index refresh')}`,
+      choices: [
+        {
+          name: `Yes ${dim('(recommended)')}`,
+          value: true,
+          disabled: false,
+        },
+        {
+          name: `No ${dim('(refresh manually with pickme refresh)')}`,
+          value: false,
+          disabled: false,
+        },
+      ],
+    })
+
+    if (pluginAnswer === null) {
+      console.log('\nInstallation cancelled.\n')
+      result.success = false
+      return result
+    }
+
+    installPluginChoice = pluginAnswer
+    console.log()
+
+    // Interactive: prompt for hidden files
+    const hiddenAnswer = await selectWithQuit<boolean>({
+      message: `Include hidden files/folders in search?\n  ${dim('Enables @.claude/ and other dot-directories')}`,
+      choices: [
+        {
+          name: `Yes ${dim('(index dotfiles)')}`,
+          value: true,
+          disabled: false,
+        },
+        {
+          name: `No ${dim('(default)')}`,
+          value: false,
+          disabled: false,
+        },
+      ],
+    })
+
+    if (hiddenAnswer === null) {
+      console.log('\nInstallation cancelled.\n')
+      result.success = false
+      return result
+    }
+
+    includeHiddenChoice = hiddenAnswer
+    console.log()
   }
-
-  console.log()
-
-  const includeHiddenChoice = await selectWithQuit<boolean>({
-    message: `Include hidden files/folders in search?\n  ${dim('Enables @.claude/ and other dot-directories')}`,
-    choices: [
-      {
-        name: `Yes ${dim('(index dotfiles)')}`,
-        value: true,
-        disabled: false,
-      },
-      {
-        name: `No ${dim('(default)')}`,
-        value: false,
-        disabled: false,
-      },
-    ],
-  })
-
-  if (includeHiddenChoice === null) {
-    console.log('\nInstallation cancelled.\n')
-    result.success = false
-    return result
-  }
-
-  console.log()
 
   // Install in selected scope with spinner
   const scopeLabel = selectedScope === 'global' ? 'Global' : 'Project'

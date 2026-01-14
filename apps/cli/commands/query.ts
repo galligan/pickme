@@ -8,10 +8,10 @@
  */
 
 import { parseArgs } from 'node:util'
-import { getConfigPath, loadConfig } from '../../config'
-import { isDaemonRunning, queryDaemon } from '../../daemon/client'
-import { getSocketPath } from '../../daemon/socket-path'
-import { createFilePicker, type FilePicker } from '../../index'
+import { getConfigPath, loadConfig } from '../../../packages/core/src/config'
+import { isDaemonRunning, queryDaemon } from '../../../packages/core/src/daemon/client'
+import { getSocketPath } from '../../../packages/core/src/daemon/socket-path'
+import { createFilePicker, type FilePicker } from '../../../packages/core/src/index'
 import type { OutputOptions } from '../core'
 
 // ============================================================================

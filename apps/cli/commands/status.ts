@@ -1,5 +1,5 @@
-import { loadConfig } from '../../config'
-import { getDefaultDbPath, getWatchedRoots, openDatabase } from '../../db'
+import { loadConfig } from '../../../packages/core/src/config'
+import { getDefaultDbPath, getWatchedRoots, openDatabase } from '../../../packages/core/src/db'
 import { output, EXIT_SUCCESS, type OutputOptions } from '../core'
 import { getEffectiveConfigPath } from '../helpers'
 import { existsSync } from 'node:fs'

@@ -1,7 +1,7 @@
-import { createFilePicker } from '../../index'
-import { getDefaultDbPath, openDatabase } from '../../db'
-import { loadConfig } from '../../config'
-import { expandTilde } from '../../utils'
+import { createFilePicker } from '../../../packages/core/src/index'
+import { getDefaultDbPath, openDatabase } from '../../../packages/core/src/db'
+import { loadConfig } from '../../../packages/core/src/config'
+import { expandTilde } from '../../../packages/core/src/utils'
 import {
   error,
   info,

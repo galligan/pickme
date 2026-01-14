@@ -3,16 +3,16 @@
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "pickme": "./cli.ts"
+    "pickme": "./apps/cli/index.ts"
   },
   "scripts": {
-    "cli": "bun run cli.ts",
-    "build": "mkdir -p dist && bun build ./cli.ts --compile --outfile dist/pickme-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)",
+    "cli": "bun run apps/cli/index.ts",
+    "build": "mkdir -p dist && bun build ./apps/cli/index.ts --compile --outfile dist/pickme-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m) && rm -f .*.bun-build *.bun-build",
     "clean": "rm -rf dist .*.bun-build *.bun-build",
     "format": "prettier --write . --ignore-path .gitignore",
     "lint:md": "markdownlint --ignore node_modules --ignore dist --ignore .scratch \"**/*.md\"",
     "lint": "bun run lint:md && bun run typecheck",
-    "query": "bun run src/index.ts",
+    "query": "bun run packages/core/src/index.ts",
     "prepare": "lefthook install",
     "session-start": "bun run hooks/session-start.ts",
     "test": "bun test",
