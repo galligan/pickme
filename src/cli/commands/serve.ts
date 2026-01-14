@@ -179,7 +179,17 @@ export async function cmdServe(
 		return handleRequest(request, state, picker);
 	}, socketPath);
 
-	// Start the server
+	// Create lifecycle manager before starting server to avoid race condition
+	// where requests could arrive before lifecycle is initialized
+	lifecycle = createLifecycle(server, {
+		idleMs,
+		onShutdown: async () => {
+			// Clean up FilePicker on shutdown
+			await picker.close();
+		},
+	});
+
+	// Start the server after lifecycle is ready
 	try {
 		server.start();
 	} catch (err) {
@@ -191,25 +201,14 @@ export async function cmdServe(
 		return 1;
 	}
 
-	// Create lifecycle manager
-	lifecycle = createLifecycle(server, {
-		idleMs,
-		onShutdown: async () => {
-			// Clean up FilePicker on shutdown
-			await picker.close();
-		},
-	});
-
 	// Log startup info
 	info(`pickme daemon started (PID: ${process.pid})`, flags);
 	info(`  Socket: ${socketPath}`, flags);
 	info(`  Idle timeout: ${serveArgs.idle} minutes`, flags);
 
-	// Keep the process alive
-	// The lifecycle manager will handle shutdown via signals or idle timeout
-	await new Promise(() => {
-		// Never resolves - process kept alive until shutdown
-	});
+	// Keep the process alive until lifecycle manager triggers shutdown
+	// The lifecycle manager will call process.exit(0) on shutdown
+	process.stdin.resume();
 
 	// This line is never reached, but satisfies TypeScript
 	return EXIT_SUCCESS;

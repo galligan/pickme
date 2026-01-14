@@ -116,10 +116,17 @@ export function createLifecycle(
 		void manager.shutdown();
 	}
 
+	// Store signal handler references for cleanup
+	const signalHandlers = {
+		SIGINT: () => handleSignal("SIGINT"),
+		SIGTERM: () => handleSignal("SIGTERM"),
+		SIGHUP: () => handleSignal("SIGHUP"),
+	};
+
 	// Set up signal handlers
-	process.on("SIGINT", () => handleSignal("SIGINT"));
-	process.on("SIGTERM", () => handleSignal("SIGTERM"));
-	process.on("SIGHUP", () => handleSignal("SIGHUP"));
+	process.on("SIGINT", signalHandlers.SIGINT);
+	process.on("SIGTERM", signalHandlers.SIGTERM);
+	process.on("SIGHUP", signalHandlers.SIGHUP);
 
 	// Start the idle timer
 	scheduleIdleTimer();
@@ -127,6 +134,8 @@ export function createLifecycle(
 	const manager: LifecycleManager = {
 		bumpActivity(): void {
 			lastActivityTime = Date.now();
+			// Reschedule the idle timer to ensure accurate timeout
+			scheduleIdleTimer();
 		},
 
 		async shutdown(): Promise<void> {
@@ -134,6 +143,11 @@ export function createLifecycle(
 				return;
 			}
 			shuttingDown = true;
+
+			// Remove signal handlers to prevent memory leaks
+			process.off("SIGINT", signalHandlers.SIGINT);
+			process.off("SIGTERM", signalHandlers.SIGTERM);
+			process.off("SIGHUP", signalHandlers.SIGHUP);
 
 			// Clear idle timer
 			if (idleTimer !== null) {
