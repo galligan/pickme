@@ -21,14 +21,23 @@ const ROLLING_WINDOW = 100;
 
 /**
  * State for tracking cache statistics.
+ *
+ * Uses a circular buffer for O(1) rolling window updates instead of
+ * array shift operations which would be O(n).
  */
 export interface StatsState {
 	/** Total number of cache hits (all-time) */
 	hits: number;
 	/** Total number of cache misses (all-time) */
 	misses: number;
-	/** Recent query results for rolling window hit rate (true = hit, false = miss) */
-	recentQueries: boolean[];
+	/** Circular buffer for rolling window (true = hit, false = miss) */
+	ringBuffer: boolean[];
+	/** Next write position in circular buffer (0 to ROLLING_WINDOW-1) */
+	ringIndex: number;
+	/** Number of entries in the buffer (0 to ROLLING_WINDOW) */
+	ringCount: number;
+	/** Running count of hits in the current window for O(1) hit rate calculation */
+	windowHits: number;
 }
 
 // ============================================================================
@@ -51,7 +60,10 @@ export function createStatsState(): StatsState {
 	return {
 		hits: 0,
 		misses: 0,
-		recentQueries: [],
+		ringBuffer: new Array(ROLLING_WINDOW),
+		ringIndex: 0,
+		ringCount: 0,
+		windowHits: 0,
 	};
 }
 
@@ -63,32 +75,55 @@ export function createStatsState(): StatsState {
  * Records a cache hit.
  *
  * Increments the hit counter and adds to the rolling window.
- * If the rolling window exceeds ROLLING_WINDOW entries, the oldest entry is removed.
+ * Uses a circular buffer for O(1) updates.
  *
  * @param stats - Stats state to mutate
  */
 export function recordCacheHit(stats: StatsState): void {
 	stats.hits++;
-	stats.recentQueries.push(true);
-	if (stats.recentQueries.length > ROLLING_WINDOW) {
-		stats.recentQueries.shift();
+
+	// If buffer is full, subtract the outgoing value from window hits
+	if (stats.ringCount === ROLLING_WINDOW) {
+		if (stats.ringBuffer[stats.ringIndex]) {
+			stats.windowHits--;
+		}
+	} else {
+		stats.ringCount++;
 	}
+
+	// Write the new value and update window hits
+	stats.ringBuffer[stats.ringIndex] = true;
+	stats.windowHits++;
+
+	// Advance the circular index
+	stats.ringIndex = (stats.ringIndex + 1) % ROLLING_WINDOW;
 }
 
 /**
  * Records a cache miss.
  *
  * Increments the miss counter and adds to the rolling window.
- * If the rolling window exceeds ROLLING_WINDOW entries, the oldest entry is removed.
+ * Uses a circular buffer for O(1) updates.
  *
  * @param stats - Stats state to mutate
  */
 export function recordCacheMiss(stats: StatsState): void {
 	stats.misses++;
-	stats.recentQueries.push(false);
-	if (stats.recentQueries.length > ROLLING_WINDOW) {
-		stats.recentQueries.shift();
+
+	// If buffer is full, subtract the outgoing value from window hits
+	if (stats.ringCount === ROLLING_WINDOW) {
+		if (stats.ringBuffer[stats.ringIndex]) {
+			stats.windowHits--;
+		}
+	} else {
+		stats.ringCount++;
 	}
+
+	// Write the new value (false = miss, doesn't add to windowHits)
+	stats.ringBuffer[stats.ringIndex] = false;
+
+	// Advance the circular index
+	stats.ringIndex = (stats.ringIndex + 1) % ROLLING_WINDOW;
 }
 
 // ============================================================================
@@ -100,16 +135,16 @@ export function recordCacheMiss(stats: StatsState): void {
  *
  * Returns the ratio of hits to total queries in the recent window.
  * Returns 0 if no queries have been recorded.
+ * Uses pre-computed windowHits for O(1) calculation.
  *
  * @param stats - Stats state to read from
  * @returns Hit rate between 0 and 1
  */
 export function getCacheHitRate(stats: StatsState): number {
-	if (stats.recentQueries.length === 0) {
+	if (stats.ringCount === 0) {
 		return 0;
 	}
-	const hits = stats.recentQueries.filter(Boolean).length;
-	return hits / stats.recentQueries.length;
+	return stats.windowHits / stats.ringCount;
 }
 
 /**
@@ -136,5 +171,8 @@ export function getTotalQueries(stats: StatsState): number {
 export function resetStats(stats: StatsState): void {
 	stats.hits = 0;
 	stats.misses = 0;
-	stats.recentQueries = [];
+	stats.ringBuffer = new Array(ROLLING_WINDOW);
+	stats.ringIndex = 0;
+	stats.ringCount = 0;
+	stats.windowHits = 0;
 }

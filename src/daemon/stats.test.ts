@@ -24,7 +24,9 @@ describe("createStatsState", () => {
 
 		expect(state.hits).toBe(0);
 		expect(state.misses).toBe(0);
-		expect(state.recentQueries).toEqual([]);
+		expect(state.ringCount).toBe(0);
+		expect(state.ringIndex).toBe(0);
+		expect(state.windowHits).toBe(0);
 	});
 });
 
@@ -41,12 +43,13 @@ describe("recordCacheHit", () => {
 		expect(state.hits).toBe(1);
 	});
 
-	test("adds true to recentQueries", () => {
+	test("adds to ring buffer", () => {
 		const state = createStatsState();
 
 		recordCacheHit(state);
 
-		expect(state.recentQueries).toEqual([true]);
+		expect(state.ringCount).toBe(1);
+		expect(state.windowHits).toBe(1);
 	});
 
 	test("can be called multiple times", () => {
@@ -57,7 +60,8 @@ describe("recordCacheHit", () => {
 		recordCacheHit(state);
 
 		expect(state.hits).toBe(3);
-		expect(state.recentQueries).toEqual([true, true, true]);
+		expect(state.ringCount).toBe(3);
+		expect(state.windowHits).toBe(3);
 	});
 });
 
@@ -74,12 +78,13 @@ describe("recordCacheMiss", () => {
 		expect(state.misses).toBe(1);
 	});
 
-	test("adds false to recentQueries", () => {
+	test("adds to ring buffer", () => {
 		const state = createStatsState();
 
 		recordCacheMiss(state);
 
-		expect(state.recentQueries).toEqual([false]);
+		expect(state.ringCount).toBe(1);
+		expect(state.windowHits).toBe(0);
 	});
 
 	test("can be called multiple times", () => {
@@ -90,7 +95,8 @@ describe("recordCacheMiss", () => {
 		recordCacheMiss(state);
 
 		expect(state.misses).toBe(3);
-		expect(state.recentQueries).toEqual([false, false, false]);
+		expect(state.ringCount).toBe(3);
+		expect(state.windowHits).toBe(0);
 	});
 });
 
@@ -161,7 +167,7 @@ describe("rolling window", () => {
 			recordCacheHit(state);
 		}
 
-		expect(state.recentQueries.length).toBe(100);
+		expect(state.ringCount).toBe(100);
 		expect(state.hits).toBe(150); // Total hits is still tracked
 	});
 
@@ -182,7 +188,7 @@ describe("rolling window", () => {
 
 		// Rolling window should now be all hits
 		expect(getCacheHitRate(state)).toBe(1);
-		expect(state.recentQueries.length).toBe(100);
+		expect(state.ringCount).toBe(100);
 	});
 
 	test("rolling window correctly tracks recent performance", () => {
@@ -207,7 +213,7 @@ describe("rolling window", () => {
 
 		// Now window is: 50 misses + 50 hits = 50% hit rate
 		expect(getCacheHitRate(state)).toBe(0.5);
-		expect(state.recentQueries.length).toBe(100);
+		expect(state.ringCount).toBe(100);
 	});
 });
 
@@ -262,7 +268,8 @@ describe("resetStats", () => {
 
 		expect(state.hits).toBe(0);
 		expect(state.misses).toBe(0);
-		expect(state.recentQueries).toEqual([]);
+		expect(state.ringCount).toBe(0);
+		expect(state.windowHits).toBe(0);
 	});
 
 	test("clears state with rolling window full", () => {
@@ -276,7 +283,8 @@ describe("resetStats", () => {
 
 		expect(state.hits).toBe(0);
 		expect(state.misses).toBe(0);
-		expect(state.recentQueries).toEqual([]);
+		expect(state.ringCount).toBe(0);
+		expect(state.windowHits).toBe(0);
 		expect(getCacheHitRate(state)).toBe(0);
 	});
 });
