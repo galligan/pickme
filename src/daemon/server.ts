@@ -96,7 +96,7 @@ export function createServer(handler: RequestHandler, socketPath?: string): Daem
       }
 
       // Ensure the socket directory exists with secure permissions
-      ensureSocketDir()
+      ensureSocketDir(path)
 
       // Clean up stale socket file if it exists
       if (existsSync(path)) {

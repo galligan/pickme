@@ -193,4 +193,17 @@ describe('ensureSocketDir', () => {
     const result = ensureSocketDir()
     expect(result).toBe(join(tempDir.path, 'pickme'))
   })
+
+  test('creates parent directory for custom socket path', () => {
+    const customSocketPath = join(tempDir.path, 'custom', 'nested', 'daemon.sock')
+    const result = ensureSocketDir(customSocketPath)
+
+    // Should create the parent directory of the socket path
+    const expectedDir = join(tempDir.path, 'custom', 'nested')
+    expect(result).toBe(expectedDir)
+
+    const stat = statSync(expectedDir)
+    expect(stat.isDirectory()).toBe(true)
+    expect(stat.mode & 0o777).toBe(0o700)
+  })
 })

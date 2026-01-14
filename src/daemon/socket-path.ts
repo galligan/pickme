@@ -8,7 +8,7 @@
  */
 
 import { mkdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 // ============================================================================
 // Socket Path Resolution
@@ -56,11 +56,14 @@ export function getSocketPath(): string {
  * If the directory already exists, verifies it has secure permissions
  * and throws if the permissions are too permissive.
  *
+ * @param socketPath - Optional custom socket path. If provided, ensures
+ *                     the parent directory of this path exists. Otherwise,
+ *                     uses the default socket directory.
  * @returns The socket directory path
  * @throws {Error} If the existing directory has insecure permissions
  */
-export function ensureSocketDir(): string {
-  const dir = getSocketDir()
+export function ensureSocketDir(socketPath?: string): string {
+  const dir = socketPath ? dirname(socketPath) : getSocketDir()
 
   try {
     mkdirSync(dir, { mode: 0o700, recursive: true })

@@ -300,9 +300,7 @@ type Prefix =
   | { type: 'folder'; folder: string }
   | { type: 'glob'; pattern: string }
 
-function parseQuery(
-  query: string
-): { prefix: Prefix | null; searchQuery: string } {
+function parseQuery(query: string): { prefix: Prefix | null; searchQuery: string } {
   // Escape sequence: @@ -> literal @
   if (query.startsWith('@@')) {
     return { prefix: null, searchQuery: query.slice(1) }
@@ -385,9 +383,7 @@ significant boost since they represent active work.
 **Important**: Use `-z` flag for reliable parsing with spaces and renames:
 
 ```typescript
-async function getGitStatusBoosts(
-  projectRoot: string
-): Promise<Map<string, number>> {
+async function getGitStatusBoosts(projectRoot: string): Promise<Map<string, number>> {
   // Use -z for NUL-separated output (handles spaces, renames)
   const result = await $`git -C ${projectRoot} status --porcelain -z`.quiet()
   const boosts = new Map<string, number>()
