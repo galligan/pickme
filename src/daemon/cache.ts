@@ -57,6 +57,9 @@ export class TTLCache {
 	/**
 	 * Creates a cache key from search parameters.
 	 *
+	 * Uses JSON serialization to avoid key collisions when parameters
+	 * contain separator characters (e.g., colons in Windows paths or queries).
+	 *
 	 * @param generation - Index generation number
 	 * @param cwd - Working directory
 	 * @param query - Search query string
@@ -64,11 +67,14 @@ export class TTLCache {
 	 * @returns Cache key string
 	 */
 	static makeKey(generation: number, cwd: string, query: string, limit: number): string {
-		return `${generation}:${cwd}:${query}:${limit}`;
+		return JSON.stringify([generation, cwd, query, limit]);
 	}
 
 	/**
 	 * Gets cached results if not expired.
+	 *
+	 * Updates entry recency for true LRU eviction by deleting and
+	 * re-inserting the entry to move it to the end of the Map.
 	 *
 	 * @param key - Cache key
 	 * @returns Cached results or undefined if missing/expired
@@ -82,6 +88,10 @@ export class TTLCache {
 			this.entries.delete(key);
 			return undefined;
 		}
+
+		// Move entry to end of Map for true LRU eviction
+		this.entries.delete(key);
+		this.entries.set(key, entry);
 
 		return entry.results;
 	}

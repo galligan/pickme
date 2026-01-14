@@ -15,8 +15,8 @@ import { Database } from "bun:sqlite";
  * - WAL mode: Better concurrency for reads
  * - synchronous NORMAL: Good durability/performance balance
  * - temp_store MEMORY: Faster temp operations
- * - cache_size -65536: 64MB page cache
- * - mmap_size 256MB: Memory-mapped I/O for large reads
+ * - cache_size -65536: 64 MiB page cache (negative = KiB)
+ * - mmap_size 268435456: 256 MiB memory-mapped I/O (2^28 bytes)
  * - busy_timeout 5000: Wait up to 5s for locks
  */
 const DAEMON_PRAGMAS = `
