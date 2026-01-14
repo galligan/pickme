@@ -11,6 +11,7 @@ import { cmdUpdate } from './commands/update'
 import { cmdBench } from './commands/bench'
 import { cmdServe } from './commands/serve'
 import { cmdQuery } from './commands/query'
+import { cmdDaemonStatus } from './commands/daemon-status'
 import { NAME } from './constants'
 import { getConfigPath } from '../config'
 import { VERSION } from '../version'
@@ -71,6 +72,14 @@ export async function main(): Promise<number> {
         return await cmdUpdate(args, flags)
       case 'serve':
         return await cmdServe(args, flags)
+      case 'daemon':
+        // Subcommand: daemon status
+        if (args[0] === 'status') {
+          return await cmdDaemonStatus(args.slice(1), flags)
+        }
+        // Unknown daemon subcommand
+        error(`unknown daemon subcommand: ${args[0] ?? '(none)'}`, flags)
+        return EXIT_USAGE
       default:
         error(`unknown command: ${command}`, flags)
         if (!flags.json) {
