@@ -574,7 +574,7 @@ Extend `hooks.json` to also refresh after file modifications:
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/post-edit-refresh.sh",
-            "timeout": 100
+            "timeout": 1
           }
         ]
       }
@@ -606,7 +606,7 @@ exit 0
 - Redirects all output to `/dev/null`
 - Exits immediately (exit 0)
 - Silent failure if pickme not found
-- 100ms timeout ensures hook itself doesn't block
+- 1 second timeout ensures hook itself doesn't block
 
 **Decision**: Include this hook by default since it's silent and non-blocking. Users won't notice it's there.
 

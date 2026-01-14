@@ -256,7 +256,7 @@ describe('openDatabase / closeDatabase', () => {
     }
   })
 
-  test('creates parent directories if needed', () => {
+  test('opens database in nested directory path', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'pickme-test-'))
     const deepPath = join(tempDir, 'a', 'b', 'c', 'test.db')
 

@@ -486,7 +486,13 @@ function ensureFileSuggestionSetting(
   if (existsSync(settingsPath)) {
     const raw = readFileSync(settingsPath, 'utf8').trim()
     if (raw) {
-      settings = JSON.parse(raw) as Record<string, unknown>
+      try {
+        settings = JSON.parse(raw) as Record<string, unknown>
+      } catch {
+        // Malformed JSON - backup the file and start fresh
+        backupIfExists(settingsPath)
+        created = true
+      }
     }
   } else {
     created = true
@@ -509,8 +515,11 @@ function setConfigIncludeHidden(configPath: string, includeHidden: boolean): boo
   const content = readFileSync(configPath, 'utf8')
   const desiredLine = `include_hidden = ${includeHidden ? 'true' : 'false'}`
 
-  if (/^\s*include_hidden\s*=\s*(true|false)\s*$/m.test(content)) {
-    const updated = content.replace(/^\s*include_hidden\s*=\s*(true|false)\s*$/m, desiredLine)
+  if (/^\s*include_hidden\s*=\s*(true|false)(\s*#.*)?$/m.test(content)) {
+    const updated = content.replace(
+      /^\s*include_hidden\s*=\s*(true|false)(\s*#.*)?$/m,
+      (_match, _val, comment) => desiredLine + (comment ?? '')
+    )
     if (updated !== content) {
       writeFileSync(configPath, updated)
       return true
@@ -823,7 +832,7 @@ export async function installHook(
         if (!alreadyInstalled) {
           return {
             success: false,
-            error: `Failed to add marketplace: ${(debug ? `${stderr}\n${stdout}` : stderr || stdout).trim()}`,
+            error: `Failed to add marketplace: ${(stderr || stdout).trim()}`,
           }
         }
       }
@@ -1153,10 +1162,8 @@ export async function runInit(
       configCreated = ensureConfigFile(configPath)
       includeHiddenUpdated = setConfigIncludeHidden(configPath, includeHiddenChoice)
     } catch (err) {
-      if (debug) {
-        const message = err instanceof Error ? err.message : String(err)
-        console.error(dim(`[debug] Failed to create config file: ${message}`))
-      }
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn(yellow(`Warning: Failed to create config file: ${message}`))
     }
 
     let msg = `${scopeLabel} installed`

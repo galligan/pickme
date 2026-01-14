@@ -38,8 +38,8 @@ export async function cmdIndex(
         output(`Skipped: ${result.filesSkipped} files`, opts)
       }
       if (result.errors.length > 0) {
-        console.error(`Errors: ${result.errors.length}`)
-        result.errors.slice(0, 5).forEach(e => console.error(`  ${e}`))
+        error(`Errors: ${result.errors.length}`, opts)
+        result.errors.slice(0, 5).forEach(e => error(`  ${e}`, opts))
       }
     }
 
@@ -84,8 +84,8 @@ export async function cmdRefresh(
       const label = force ? 'Force refreshed' : 'Refreshed'
       output(`${label}: ${result.filesIndexed} files in ${result.duration.toFixed(0)}ms`, opts)
       if (result.errors.length > 0) {
-        console.error(`Errors: ${result.errors.length}`)
-        result.errors.slice(0, 5).forEach(e => console.error(`  ${e}`))
+        error(`Errors: ${result.errors.length}`, opts)
+        result.errors.slice(0, 5).forEach(e => error(`  ${e}`, opts))
       }
     }
 

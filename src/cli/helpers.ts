@@ -77,8 +77,7 @@ export function isDebugEnabledForPath(target: string, roots: readonly string[]):
 export function findBestMatchingRoot(target: string, roots: readonly string[]): string | null {
   let match: string | null = null
   for (const root of roots) {
-    if (root === '/') return root
-    if (target === root || target.startsWith(`${root}/`)) {
+    if (target === root || target.startsWith(`${root}/`) || root === '/') {
       if (!match || root.length > match.length) {
         match = root
       }

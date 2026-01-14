@@ -10,7 +10,7 @@ function setConfigActive(configPath: string, active: boolean): boolean {
   const activeLine = `active = ${active ? 'true' : 'false'}`
 
   if (text.match(/^\s*active\s*=/m)) {
-    const updated = text.replace(/^\s*active\s*=\s*(true|false)\s*$/m, activeLine)
+    const updated = text.replace(/^\s*active\s*=\s*(true|false)(.*)$/m, `${activeLine}$2`)
     if (updated !== text) {
       writeFileSync(configPath, updated)
       return true

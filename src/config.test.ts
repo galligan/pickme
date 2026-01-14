@@ -339,7 +339,7 @@ include_gitignored = true
     }
   })
 
-  test('index.exclude overrides defaults and excludes', async () => {
+  test('index.exclude merges with root-level excludes', async () => {
     const { path, cleanup } = createTempConfig(`
 [[excludes]]
 pattern = "coverage"
@@ -350,7 +350,9 @@ patterns = ["custom"]
 
     try {
       const config = await loadConfig(path)
-      expect(config.index.exclude.patterns).toEqual(['custom'])
+      // Both sources are merged: root-level excludes + index.exclude.patterns
+      expect(config.index.exclude.patterns).toContain('coverage')
+      expect(config.index.exclude.patterns).toContain('custom')
     } finally {
       cleanup()
     }

@@ -647,7 +647,7 @@ function validateConfig(raw: unknown): Config {
     }
 
     if (hasIndexExclude) {
-      excludePatterns = baseConfig.index.exclude.patterns
+      excludePatterns = dedupeStrings([...excludePatterns, ...rawConfig.index.exclude.patterns])
     }
 
     return {

@@ -212,7 +212,11 @@ async function discoverFilesWithFd(
   }
 
   // Build exclude flags including disabled directories
-  const allExcludes = [...excludePatterns, ...disabledDirs]
+  // Convert absolute disabled dirs to relative paths for fd (which expects patterns, not absolute paths)
+  const relativeDisabledDirs = disabledDirs
+    .filter(dir => dir.startsWith(root + sep))
+    .map(dir => dir.slice(root.length + 1))
+  const allExcludes = [...excludePatterns, ...relativeDisabledDirs]
   const excludeFlags = buildFdExcludeFlags(allExcludes)
 
   try {

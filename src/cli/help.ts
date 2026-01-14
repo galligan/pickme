@@ -36,7 +36,7 @@ CONFIG OPTIONS
   --show             Print the config contents
   --validate         Validate config and exit
 
-  GLOBAL OPTIONS
+GLOBAL OPTIONS
   --json             Output as JSON
   -q, --quiet        Suppress non-essential output
   --no-color         Disable colored output
