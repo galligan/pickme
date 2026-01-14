@@ -7,7 +7,7 @@
  * @module daemon/db
  */
 
-import { Database } from "bun:sqlite";
+import { Database } from 'bun:sqlite'
 
 /**
  * Pragmas optimized for read-heavy workloads.
@@ -26,7 +26,7 @@ const DAEMON_PRAGMAS = `
   PRAGMA cache_size = -65536;
   PRAGMA mmap_size = 268435456;
   PRAGMA busy_timeout = 5000;
-`;
+`
 
 /**
  * Opens a SQLite database with daemon-optimized pragmas.
@@ -35,9 +35,9 @@ const DAEMON_PRAGMAS = `
  * @returns Database instance with read-optimized settings applied
  */
 export function openDaemonDb(dbPath: string): Database {
-	const db = new Database(dbPath, { create: true });
-	db.exec(DAEMON_PRAGMAS);
-	return db;
+  const db = new Database(dbPath, { create: true })
+  db.exec(DAEMON_PRAGMAS)
+  return db
 }
 
 /**
@@ -49,7 +49,7 @@ export function openDaemonDb(dbPath: string): Database {
  * @param db - Database instance to close
  */
 export function closeDaemonDb(db: Database): void {
-	db.exec("PRAGMA optimize;");
-	db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-	db.close();
+  db.exec('PRAGMA optimize;')
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE);')
+  db.close()
 }
