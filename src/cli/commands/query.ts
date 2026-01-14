@@ -131,9 +131,15 @@ export async function cmdQuery(args: readonly string[], _flags: OutputOptions): 
 
   const { query, cwd, limit, noDaemon } = queryArgs
 
-  // Try daemon first (unless disabled)
-  if (!noDaemon) {
-    const socketPath = getSocketPath()
+  // Load config to honor daemon settings
+  const configPath = getConfigPath()
+  const config = await loadConfig(configPath)
+  const daemonConfig = config.daemon
+
+  // Try daemon first (unless disabled via flag or config)
+  if (!noDaemon && daemonConfig.enabled) {
+    // Use custom socket path from config if provided, otherwise use default
+    const socketPath = daemonConfig.socket_path ?? getSocketPath()
     const daemonAvailable = await isDaemonRunning(socketPath)
 
     if (daemonAvailable) {
@@ -144,13 +150,20 @@ export async function cmdQuery(args: readonly string[], _flags: OutputOptions): 
         }
         return 0
       } catch {
-        // Fall through to direct search
+        // Fall through to direct search if fallback_to_cli is enabled
+        if (!daemonConfig.fallback_to_cli) {
+          console.error('pickme query: daemon connection failed and fallback disabled')
+          return 1
+        }
       }
+    } else if (!daemonConfig.fallback_to_cli) {
+      // Daemon not running and fallback disabled
+      console.error('pickme query: daemon not running and fallback disabled')
+      return 1
     }
   }
 
   // Direct search fallback
-  const configPath = getConfigPath()
   let picker: FilePicker
 
   try {

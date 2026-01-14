@@ -13,7 +13,7 @@
 // ============================================================================
 
 /** Maximum number of queries tracked in the rolling window */
-const ROLLING_WINDOW = 100;
+const ROLLING_WINDOW = 100
 
 // ============================================================================
 // Types
@@ -26,18 +26,18 @@ const ROLLING_WINDOW = 100;
  * array shift operations which would be O(n).
  */
 export interface StatsState {
-	/** Total number of cache hits (all-time) */
-	hits: number;
-	/** Total number of cache misses (all-time) */
-	misses: number;
-	/** Circular buffer for rolling window (true = hit, false = miss) */
-	ringBuffer: boolean[];
-	/** Next write position in circular buffer (0 to ROLLING_WINDOW-1) */
-	ringIndex: number;
-	/** Number of entries in the buffer (0 to ROLLING_WINDOW) */
-	ringCount: number;
-	/** Running count of hits in the current window for O(1) hit rate calculation */
-	windowHits: number;
+  /** Total number of cache hits (all-time) */
+  hits: number
+  /** Total number of cache misses (all-time) */
+  misses: number
+  /** Circular buffer for rolling window (true = hit, false = miss) */
+  ringBuffer: boolean[]
+  /** Next write position in circular buffer (0 to ROLLING_WINDOW-1) */
+  ringIndex: number
+  /** Number of entries in the buffer (0 to ROLLING_WINDOW) */
+  ringCount: number
+  /** Running count of hits in the current window for O(1) hit rate calculation */
+  windowHits: number
 }
 
 // ============================================================================
@@ -57,14 +57,14 @@ export interface StatsState {
  * ```
  */
 export function createStatsState(): StatsState {
-	return {
-		hits: 0,
-		misses: 0,
-		ringBuffer: new Array(ROLLING_WINDOW),
-		ringIndex: 0,
-		ringCount: 0,
-		windowHits: 0,
-	};
+  return {
+    hits: 0,
+    misses: 0,
+    ringBuffer: new Array(ROLLING_WINDOW),
+    ringIndex: 0,
+    ringCount: 0,
+    windowHits: 0,
+  }
 }
 
 // ============================================================================
@@ -80,23 +80,23 @@ export function createStatsState(): StatsState {
  * @param stats - Stats state to mutate
  */
 export function recordCacheHit(stats: StatsState): void {
-	stats.hits++;
+  stats.hits++
 
-	// If buffer is full, subtract the outgoing value from window hits
-	if (stats.ringCount === ROLLING_WINDOW) {
-		if (stats.ringBuffer[stats.ringIndex]) {
-			stats.windowHits--;
-		}
-	} else {
-		stats.ringCount++;
-	}
+  // If buffer is full, subtract the outgoing value from window hits
+  if (stats.ringCount === ROLLING_WINDOW) {
+    if (stats.ringBuffer[stats.ringIndex]) {
+      stats.windowHits--
+    }
+  } else {
+    stats.ringCount++
+  }
 
-	// Write the new value and update window hits
-	stats.ringBuffer[stats.ringIndex] = true;
-	stats.windowHits++;
+  // Write the new value and update window hits
+  stats.ringBuffer[stats.ringIndex] = true
+  stats.windowHits++
 
-	// Advance the circular index
-	stats.ringIndex = (stats.ringIndex + 1) % ROLLING_WINDOW;
+  // Advance the circular index
+  stats.ringIndex = (stats.ringIndex + 1) % ROLLING_WINDOW
 }
 
 /**
@@ -108,22 +108,22 @@ export function recordCacheHit(stats: StatsState): void {
  * @param stats - Stats state to mutate
  */
 export function recordCacheMiss(stats: StatsState): void {
-	stats.misses++;
+  stats.misses++
 
-	// If buffer is full, subtract the outgoing value from window hits
-	if (stats.ringCount === ROLLING_WINDOW) {
-		if (stats.ringBuffer[stats.ringIndex]) {
-			stats.windowHits--;
-		}
-	} else {
-		stats.ringCount++;
-	}
+  // If buffer is full, subtract the outgoing value from window hits
+  if (stats.ringCount === ROLLING_WINDOW) {
+    if (stats.ringBuffer[stats.ringIndex]) {
+      stats.windowHits--
+    }
+  } else {
+    stats.ringCount++
+  }
 
-	// Write the new value (false = miss, doesn't add to windowHits)
-	stats.ringBuffer[stats.ringIndex] = false;
+  // Write the new value (false = miss, doesn't add to windowHits)
+  stats.ringBuffer[stats.ringIndex] = false
 
-	// Advance the circular index
-	stats.ringIndex = (stats.ringIndex + 1) % ROLLING_WINDOW;
+  // Advance the circular index
+  stats.ringIndex = (stats.ringIndex + 1) % ROLLING_WINDOW
 }
 
 // ============================================================================
@@ -141,10 +141,10 @@ export function recordCacheMiss(stats: StatsState): void {
  * @returns Hit rate between 0 and 1
  */
 export function getCacheHitRate(stats: StatsState): number {
-	if (stats.ringCount === 0) {
-		return 0;
-	}
-	return stats.windowHits / stats.ringCount;
+  if (stats.ringCount === 0) {
+    return 0
+  }
+  return stats.windowHits / stats.ringCount
 }
 
 /**
@@ -154,7 +154,7 @@ export function getCacheHitRate(stats: StatsState): number {
  * @returns Total query count
  */
 export function getTotalQueries(stats: StatsState): number {
-	return stats.hits + stats.misses;
+  return stats.hits + stats.misses
 }
 
 // ============================================================================
@@ -169,10 +169,10 @@ export function getTotalQueries(stats: StatsState): number {
  * @param stats - Stats state to reset
  */
 export function resetStats(stats: StatsState): void {
-	stats.hits = 0;
-	stats.misses = 0;
-	stats.ringBuffer = new Array(ROLLING_WINDOW);
-	stats.ringIndex = 0;
-	stats.ringCount = 0;
-	stats.windowHits = 0;
+  stats.hits = 0
+  stats.misses = 0
+  stats.ringBuffer = new Array(ROLLING_WINDOW)
+  stats.ringIndex = 0
+  stats.ringCount = 0
+  stats.windowHits = 0
 }

@@ -12,13 +12,13 @@
 // ============================================================================
 
 /** Default request timeout in milliseconds */
-export const REQUEST_TIMEOUT_MS = 5000;
+export const REQUEST_TIMEOUT_MS = 5000
 
 /** RSS threshold for warning (256MB) */
-export const RSS_WARN_BYTES = 256 * 1024 * 1024;
+export const RSS_WARN_BYTES = 256 * 1024 * 1024
 
 /** RSS threshold for forced exit (512MB) */
-export const RSS_EXIT_BYTES = 512 * 1024 * 1024;
+export const RSS_EXIT_BYTES = 512 * 1024 * 1024
 
 // ============================================================================
 // Types
@@ -28,23 +28,23 @@ export const RSS_EXIT_BYTES = 512 * 1024 * 1024;
  * State for circuit breaker tracking.
  */
 export interface CircuitState {
-	/** Count of consecutive database errors */
-	dbErrorCount: number;
-	/** Timestamp of last RSS check */
-	lastRssCheck: number;
-	/** Interval between RSS checks in milliseconds */
-	rssCheckIntervalMs: number;
+  /** Count of consecutive database errors */
+  dbErrorCount: number
+  /** Timestamp of last RSS check */
+  lastRssCheck: number
+  /** Interval between RSS checks in milliseconds */
+  rssCheckIntervalMs: number
 }
 
 /**
  * Action to take based on RSS check.
  */
-export type RssAction = "ok" | "warn" | "exit";
+export type RssAction = 'ok' | 'warn' | 'exit'
 
 /**
  * Action to take based on database error.
  */
-export type DbRecoveryAction = "retry" | "exit";
+export type DbRecoveryAction = 'retry' | 'exit'
 
 // ============================================================================
 // State Factory
@@ -63,11 +63,11 @@ export type DbRecoveryAction = "retry" | "exit";
  * ```
  */
 export function createCircuitState(rssCheckIntervalMs = 30000): CircuitState {
-	return {
-		dbErrorCount: 0,
-		lastRssCheck: 0,
-		rssCheckIntervalMs,
-	};
+  return {
+    dbErrorCount: 0,
+    lastRssCheck: 0,
+    rssCheckIntervalMs,
+  }
 }
 
 // ============================================================================
@@ -96,20 +96,17 @@ export function createCircuitState(rssCheckIntervalMs = 30000): CircuitState {
  * ```
  */
 export async function withTimeout<T>(
-	promise: Promise<T>,
-	timeoutMs: number = REQUEST_TIMEOUT_MS,
+  promise: Promise<T>,
+  timeoutMs: number = REQUEST_TIMEOUT_MS
 ): Promise<T> {
-	const timeout = new Promise<never>((_, reject) => {
-		const timer = setTimeout(
-			() => reject(new Error("Request timeout")),
-			timeoutMs,
-		);
-		// Ensure timer doesn't prevent process exit
-		if (timer.unref) {
-			timer.unref();
-		}
-	});
-	return Promise.race([promise, timeout]);
+  const timeout = new Promise<never>((_, reject) => {
+    const timer = setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
+    // Ensure timer doesn't prevent process exit
+    if (timer.unref) {
+      timer.unref()
+    }
+  })
+  return Promise.race([promise, timeout])
 }
 
 // ============================================================================
@@ -129,20 +126,20 @@ export async function withTimeout<T>(
  * @returns Action to take based on memory usage
  */
 export function checkRss(
-	warnBytes: number = RSS_WARN_BYTES,
-	exitBytes: number = RSS_EXIT_BYTES,
+  warnBytes: number = RSS_WARN_BYTES,
+  exitBytes: number = RSS_EXIT_BYTES
 ): RssAction {
-	const rss = process.memoryUsage().rss;
+  const rss = process.memoryUsage().rss
 
-	if (rss >= exitBytes) {
-		return "exit";
-	}
+  if (rss >= exitBytes) {
+    return 'exit'
+  }
 
-	if (rss >= warnBytes) {
-		return "warn";
-	}
+  if (rss >= warnBytes) {
+    return 'warn'
+  }
 
-	return "ok";
+  return 'ok'
 }
 
 /**
@@ -155,24 +152,20 @@ export function checkRss(
  * @param onWarn - Callback when RSS exceeds warn threshold
  * @param onExit - Callback when RSS exceeds exit threshold
  */
-export function maybeCheckRss(
-	circuit: CircuitState,
-	onWarn: () => void,
-	onExit: () => void,
-): void {
-	const now = Date.now();
-	if (now - circuit.lastRssCheck < circuit.rssCheckIntervalMs) {
-		return;
-	}
+export function maybeCheckRss(circuit: CircuitState, onWarn: () => void, onExit: () => void): void {
+  const now = Date.now()
+  if (now - circuit.lastRssCheck < circuit.rssCheckIntervalMs) {
+    return
+  }
 
-	circuit.lastRssCheck = now;
-	const action = checkRss();
+  circuit.lastRssCheck = now
+  const action = checkRss()
 
-	if (action === "warn") {
-		onWarn();
-	} else if (action === "exit") {
-		onExit();
-	}
+  if (action === 'warn') {
+    onWarn()
+  } else if (action === 'exit') {
+    onExit()
+  }
 }
 
 // ============================================================================
@@ -192,17 +185,14 @@ export function maybeCheckRss(
  * @param _error - The database error (logged externally)
  * @returns Action to take: "retry" on first error, "exit" on subsequent
  */
-export function handleDbError(
-	circuit: CircuitState,
-	_error: Error,
-): DbRecoveryAction {
-	circuit.dbErrorCount++;
+export function handleDbError(circuit: CircuitState, _error: Error): DbRecoveryAction {
+  circuit.dbErrorCount++
 
-	if (circuit.dbErrorCount === 1) {
-		return "retry";
-	}
+  if (circuit.dbErrorCount === 1) {
+    return 'retry'
+  }
 
-	return "exit";
+  return 'exit'
 }
 
 /**
@@ -214,5 +204,5 @@ export function handleDbError(
  * @param circuit - Circuit state to reset
  */
 export function resetDbErrorCount(circuit: CircuitState): void {
-	circuit.dbErrorCount = 0;
+  circuit.dbErrorCount = 0
 }
