@@ -8,6 +8,7 @@
  */
 
 import type { FilePicker, FilePickerSearchResult } from '../index'
+import { getEffectiveLimit, getSearchableLength } from './limits'
 import {
   type DaemonRequest,
   type DaemonResponse,
@@ -102,10 +103,14 @@ async function handleSearch(
   const start = performance.now()
 
   try {
+    // Calculate effective limit based on query length
+    const queryLength = getSearchableLength(request.query)
+    const limit = getEffectiveLimit(queryLength, request.limit)
+
     // Delegate to FilePicker.search with request parameters
     const matches = await picker.search(request.query, {
       projectRoot: request.cwd,
-      limit: request.limit ?? 50,
+      limit,
     })
 
     // Transform FilePickerSearchResult to DaemonSearchResult

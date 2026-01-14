@@ -659,6 +659,9 @@ function fuzzyScore(query: string, target: string): number {
 
   for (let i = 0; i < needle.length; i++) {
     const ch = needle[i]
+    if (ch === undefined) {
+      continue
+    }
     const idx = hay.indexOf(ch, lastIndex + 1)
     if (idx === -1) {
       return -1

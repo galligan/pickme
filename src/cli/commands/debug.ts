@@ -115,9 +115,15 @@ export async function cmdDebug(args: string[], opts: OutputOptions): Promise<num
       for (let i = 1; i < args.length; i++) {
         const arg = args[i]
         if (arg === '--log' && args[i + 1]) {
-          logPath = resolve(expandTilde(args[++i]))
+          const nextArg = args[++i]
+          if (nextArg !== undefined) {
+            logPath = resolve(expandTilde(nextArg))
+          }
         } else if (arg === '--session' && args[i + 1]) {
-          session = args[++i]
+          const nextArg = args[++i]
+          if (nextArg !== undefined) {
+            session = nextArg
+          }
         } else if (arg === '--latest') {
           latestForCwd = true
         }

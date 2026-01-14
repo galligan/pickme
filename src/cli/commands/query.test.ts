@@ -111,14 +111,7 @@ describe('parseQueryArgs', () => {
 
   test('handles multiple flags together', () => {
     process.cwd = () => '/default'
-    const result = parseQueryArgs([
-      'my-query',
-      '--cwd',
-      '/custom',
-      '--limit',
-      '75',
-      '--no-daemon',
-    ])
+    const result = parseQueryArgs(['my-query', '--cwd', '/custom', '--limit', '75', '--no-daemon'])
 
     expect(result.query).toBe('my-query')
     expect(result.cwd).toBe('/custom')

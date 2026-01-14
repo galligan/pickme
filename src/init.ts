@@ -514,6 +514,7 @@ function setConfigIncludeHidden(configPath: string, includeHidden: boolean): boo
   ensureConfigFile(configPath)
   const content = readFileSync(configPath, 'utf8')
   const desiredValue = includeHidden ? 'true' : 'false'
+  const desiredLine = `include_hidden = ${desiredValue}`
 
   // Regex captures: (1) leading whitespace, (2) current value, (3) trailing comment with preceding space
   if (/^(\s*)include_hidden\s*=\s*(true|false)(\s*#.*)?$/m.test(content)) {

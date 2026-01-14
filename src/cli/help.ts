@@ -23,6 +23,7 @@ COMMANDS
   init               Install pickme hooks into Claude Code
   update             Update pickme to the latest version
   serve              Start the pickme daemon for fast file search
+  daemon status      Show daemon status
 
 UPDATE OPTIONS
   -c, --check        Check for updates without installing
@@ -82,6 +83,8 @@ EXAMPLES
   ${NAME} serve
   ${NAME} serve --idle 60
   ${NAME} serve -s /tmp/custom.sock
+  ${NAME} daemon status
+  ${NAME} daemon status --json
 
 ENVIRONMENT
   PICKME_DEBUG=1     Enable debug logging

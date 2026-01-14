@@ -114,7 +114,8 @@ export function findLatestDebugLog(dataDir: string): string | null {
 
   if (entries.length === 0) return null
   entries.sort((a, b) => b.mtime - a.mtime)
-  return entries[0].fullPath
+  const first = entries[0]
+  return first ? first.fullPath : null
 }
 
 export function findLatestDebugLogForCwd(dataDir: string, cwd: string): string | null {
@@ -167,28 +168,33 @@ export function parseDebugLog(content: string): DebugRecord[] {
   for (const line of content.split('\n')) {
     const startMatch = line.match(startRe)
     if (startMatch?.groups) {
-      pending.set(startMatch.groups.mode, {
-        query: startMatch.groups.query,
-        timestamp: startMatch.groups.ts,
-      })
+      const { mode, query, ts } = startMatch.groups
+      if (mode && query && ts) {
+        pending.set(mode, {
+          query,
+          timestamp: ts,
+        })
+      }
       continue
     }
 
     const endMatch = line.match(endRe)
     if (endMatch?.groups) {
       const { mode, ts, status, results, duration } = endMatch.groups
-      const start = pending.get(mode)
-      if (start) {
-        pending.delete(mode)
+      if (mode && ts && status && results && duration) {
+        const start = pending.get(mode)
+        if (start) {
+          pending.delete(mode)
+        }
+        records.push({
+          timestamp: ts,
+          mode,
+          query: start?.query ?? '(unknown)',
+          status: Number(status),
+          results: Number(results),
+          durationMs: Number(duration),
+        })
       }
-      records.push({
-        timestamp: ts,
-        mode,
-        query: start?.query ?? '(unknown)',
-        status: Number(status),
-        results: Number(results),
-        durationMs: Number(duration),
-      })
     }
   }
 
@@ -249,10 +255,15 @@ export function listDebugSessions(dataDir: string): SessionSummary[] {
       for (const line of lines) {
         const match = line.match(sessionStartRe)
         if (match?.groups) {
-          sessionId = match.groups.session
-          const parsed = new Date(match.groups.ts)
-          if (!Number.isNaN(parsed.getTime())) {
-            startedAt = parsed
+          const { session, ts } = match.groups
+          if (session) {
+            sessionId = session
+          }
+          if (ts) {
+            const parsed = new Date(ts)
+            if (!Number.isNaN(parsed.getTime())) {
+              startedAt = parsed
+            }
           }
           break
         }
