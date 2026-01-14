@@ -8,10 +8,11 @@
 
 import { existsSync } from 'node:fs'
 import { parseArgs } from 'node:util'
-import { loadConfig } from '../../config'
+import { getConfigPath, loadConfig } from '../../config'
 import { sendRequest } from '../../daemon/client'
 import { getSocketPath } from '../../daemon/socket-path'
 import { EXIT_SUCCESS, type OutputOptions } from '../core'
+import { getEffectiveConfigPath } from '../helpers'
 
 // ============================================================================
 // Types
@@ -87,10 +88,13 @@ export function parseDaemonStatusArgs(args: readonly string[]): DaemonStatusArgs
  */
 export async function cmdDaemonStatus(
   args: readonly string[],
-  _flags: OutputOptions
+  flags: OutputOptions
 ): Promise<number> {
   const statusArgs = parseDaemonStatusArgs(args)
-  const config = await loadConfig()
+
+  // Use effective config path (respects PICKME_CONFIG_PATH env var)
+  const configPath = getEffectiveConfigPath(getConfigPath)
+  const config = await loadConfig(configPath)
   const socketPath = config.daemon.socket_path ?? getSocketPath()
 
   const status: StatusOutput = {
@@ -111,7 +115,8 @@ export async function cmdDaemonStatus(
     }
   }
 
-  if (statusArgs.json) {
+  // Honor both global --json flag and local -j flag
+  if (flags.json || statusArgs.json) {
     console.log(JSON.stringify(status, null, 2))
   } else {
     printStatus(status)
