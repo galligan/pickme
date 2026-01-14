@@ -67,8 +67,11 @@ export async function cmdBench(args: string[], opts: OutputOptions): Promise<num
   for (let i = 0; i < benchArgs.length; i++) {
     const arg = benchArgs[i]
     if (arg === '--session' && benchArgs[i + 1]) {
-      sessionId = benchArgs[++i]
-    } else {
+      const nextArg = benchArgs[++i]
+      if (nextArg !== undefined) {
+        sessionId = nextArg
+      }
+    } else if (arg !== undefined) {
       forwarded.push(arg)
     }
   }
@@ -83,6 +86,9 @@ export async function cmdBench(args: string[], opts: OutputOptions): Promise<num
   const filteredArgs: string[] = []
   for (let i = 0; i < forwarded.length; i++) {
     const arg = forwarded[i]
+    if (arg === undefined) {
+      continue
+    }
     if (arg === '--session-id') {
       i++
       continue

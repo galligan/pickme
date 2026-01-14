@@ -97,8 +97,11 @@ function createMockHandler(responses: Map<string, DaemonResponse> = new Map()): 
         return successResponse(request.id)
       case 'stop':
         return successResponse(request.id)
-      default:
-        return errorResponse(request.id, 'unknown request type')
+      default: {
+        // This should never happen since we handle all known request types
+        const exhaustiveCheck: never = request
+        return errorResponse((exhaustiveCheck as { id: string }).id, 'unknown request type')
+      }
     }
   }
 }
@@ -406,10 +409,10 @@ describe('DaemonServer request handling', () => {
   })
 
   test('calls handler with parsed request', async () => {
-    let receivedRequest: DaemonRequest | null = null
+    let receivedRequest: Record<string, unknown> | null = null
 
     const handler: RequestHandler = async (request: DaemonRequest): Promise<DaemonResponse> => {
-      receivedRequest = request
+      receivedRequest = request as unknown as Record<string, unknown>
       return successResponse(request.id)
     }
 
@@ -425,9 +428,9 @@ describe('DaemonServer request handling', () => {
     await sendRequest(temp.socketPath, request)
 
     expect(receivedRequest).not.toBeNull()
-    expect(receivedRequest?.id).toBe('test-123')
-    expect(receivedRequest?.type).toBe('invalidate')
-    expect((receivedRequest as { root?: string })?.root).toBe('/test/root')
+    expect(receivedRequest!.id).toBe('test-123')
+    expect(receivedRequest!.type).toBe('invalidate')
+    expect(receivedRequest!.root).toBe('/test/root')
   })
 })
 

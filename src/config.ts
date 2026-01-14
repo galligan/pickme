@@ -485,7 +485,7 @@ function validateNamespaces(raw: Record<string, string | string[]> | undefined):
     return defaults
   }
 
-  const result: Record<string, string | string[]> = { ...defaults }
+  const result: Record<string, NamespaceValue> = { ...defaults }
   for (const [name, value] of Object.entries(raw)) {
     if (typeof value === 'string') {
       result[name] = expandTilde(value)
@@ -718,7 +718,7 @@ function validateConfig(raw: unknown): Config {
       excludePatterns = dedupeStrings([...excludePatterns, ...excludeEntries])
     }
 
-    if (hasIndexExclude) {
+    if (hasIndexExclude && rawConfig.index?.exclude?.patterns) {
       excludePatterns = dedupeStrings([...excludePatterns, ...rawConfig.index.exclude.patterns])
     }
 

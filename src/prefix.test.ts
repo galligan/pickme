@@ -25,6 +25,11 @@ const testConfig: Config = {
     depth: { default: 10 },
     limits: { max_files_per_root: 50000, warn_threshold_mb: 500 },
   },
+  daemon: {
+    enabled: true,
+    idle_minutes: 30,
+    fallback_to_cli: true,
+  },
 }
 
 describe('parseQuery', () => {

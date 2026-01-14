@@ -47,9 +47,15 @@ export async function cmdSearch(
 
   for (let i = 1; i < args.length; i++) {
     if ((args[i] === '--root' || args[i] === '-r') && args[i + 1]) {
-      projectRoot = args[++i]
+      const nextArg = args[++i]
+      if (nextArg !== undefined) {
+        projectRoot = nextArg
+      }
     } else if ((args[i] === '--limit' || args[i] === '-n') && args[i + 1]) {
-      limit = parseInt(args[++i], 10)
+      const nextArg = args[++i]
+      if (nextArg !== undefined) {
+        limit = parseInt(nextArg, 10)
+      }
     } else if (args[i] === '--exact') {
       exact = true
     } else if (args[i] === '--paths') {

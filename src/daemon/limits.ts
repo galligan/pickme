@@ -70,6 +70,6 @@ function getBaseLimit(queryLength: number): number {
 export function getSearchableLength(query: string): number {
   // Strip namespace prefix if present (@namespace:query or @:query)
   const match = query.match(/^@[^:]*:(.*)/)
-  const searchPart = match ? match[1] : query
+  const searchPart = match?.[1] ?? query
   return searchPart.trim().length
 }

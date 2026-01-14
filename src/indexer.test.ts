@@ -35,9 +35,9 @@ let testDir: string
 function createMockDb(): Database {
   return {
     query: mock(() => ({ all: () => [] })),
-    run: mock(() => {}),
-    exec: mock(() => {}),
-  }
+    run: mock(() => ({ changes: 0, lastInsertRowid: 0 })),
+    exec: mock(() => ({ changes: 0, lastInsertRowid: 0 })),
+  } as unknown as Database
 }
 
 /** Mock database operations for testing */
@@ -87,6 +87,7 @@ function createTestConfig(overrides?: Partial<Config>): Config {
     index: {
       roots: [testDir],
       disabled: [],
+      include_hidden: false,
       exclude: { patterns: ['node_modules', '.git'] },
       include: { patterns: [] },
       depth: { default: 10 },
@@ -94,6 +95,11 @@ function createTestConfig(overrides?: Partial<Config>): Config {
         max_files_per_root: 50000,
         warn_threshold_mb: 500,
       },
+    },
+    daemon: {
+      enabled: true,
+      idle_minutes: 30,
+      fallback_to_cli: true,
     },
     ...overrides,
   }
@@ -443,6 +449,7 @@ describe('refreshIndex', () => {
       index: {
         roots: [subdir1, subdir2],
         disabled: [],
+        include_hidden: false,
         exclude: { patterns: [] },
         include: { patterns: [] },
         depth: { default: 10 },
