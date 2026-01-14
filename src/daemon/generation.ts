@@ -7,7 +7,7 @@
  * @module daemon/generation
  */
 
-import type { Database } from "bun:sqlite";
+import type { Database } from 'bun:sqlite'
 
 // ============================================================================
 // Types
@@ -17,10 +17,10 @@ import type { Database } from "bun:sqlite";
  * State for tracking generation changes.
  */
 export interface GenerationState {
-	/** Current generation number */
-	current: number;
-	/** Timestamp of last check (ms since epoch) */
-	lastChecked: number;
+  /** Current generation number */
+  current: number
+  /** Timestamp of last check (ms since epoch) */
+  lastChecked: number
 }
 
 // ============================================================================
@@ -36,8 +36,8 @@ export interface GenerationState {
  * @returns Current generation number (0 for fresh database)
  */
 export function readGeneration(db: Database): number {
-	const result = db.query<{ user_version: number }, []>("PRAGMA user_version;").get();
-	return result?.user_version ?? 0;
+  const result = db.query<{ user_version: number }, []>('PRAGMA user_version;').get()
+  return result?.user_version ?? 0
 }
 
 /**
@@ -47,10 +47,10 @@ export function readGeneration(db: Database): number {
  * @returns New generation number after increment
  */
 export function bumpGeneration(db: Database): number {
-	const current = readGeneration(db);
-	const next = current + 1;
-	db.exec(`PRAGMA user_version = ${next};`);
-	return next;
+  const current = readGeneration(db)
+  const next = current + 1
+  db.exec(`PRAGMA user_version = ${next};`)
+  return next
 }
 
 /**
@@ -60,10 +60,10 @@ export function bumpGeneration(db: Database): number {
  * @returns Generation state for change detection
  */
 export function createGenerationTracker(db: Database): GenerationState {
-	return {
-		current: readGeneration(db),
-		lastChecked: Date.now(),
-	};
+  return {
+    current: readGeneration(db),
+    lastChecked: Date.now(),
+  }
 }
 
 /**
@@ -76,17 +76,14 @@ export function createGenerationTracker(db: Database): GenerationState {
  * @param state - Mutable generation state to check and update
  * @returns New generation number if changed, undefined otherwise
  */
-export function checkGenerationChange(
-	db: Database,
-	state: GenerationState
-): number | undefined {
-	state.lastChecked = Date.now();
-	const dbGeneration = readGeneration(db);
+export function checkGenerationChange(db: Database, state: GenerationState): number | undefined {
+  state.lastChecked = Date.now()
+  const dbGeneration = readGeneration(db)
 
-	if (dbGeneration !== state.current) {
-		state.current = dbGeneration;
-		return dbGeneration;
-	}
+  if (dbGeneration !== state.current) {
+    state.current = dbGeneration
+    return dbGeneration
+  }
 
-	return undefined;
+  return undefined
 }
