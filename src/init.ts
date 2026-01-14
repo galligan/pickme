@@ -513,12 +513,13 @@ function ensureFileSuggestionSetting(
 function setConfigIncludeHidden(configPath: string, includeHidden: boolean): boolean {
   ensureConfigFile(configPath)
   const content = readFileSync(configPath, 'utf8')
-  const desiredLine = `include_hidden = ${includeHidden ? 'true' : 'false'}`
+  const desiredValue = includeHidden ? 'true' : 'false'
 
-  if (/^\s*include_hidden\s*=\s*(true|false)(\s*#.*)?$/m.test(content)) {
+  // Regex captures: (1) leading whitespace, (2) current value, (3) trailing comment with preceding space
+  if (/^(\s*)include_hidden\s*=\s*(true|false)(\s*#.*)?$/m.test(content)) {
     const updated = content.replace(
-      /^\s*include_hidden\s*=\s*(true|false)(\s*#.*)?$/m,
-      (_match, _val, comment) => desiredLine + (comment ?? '')
+      /^(\s*)include_hidden\s*=\s*(true|false)(\s*#.*)?$/m,
+      (_match, indent, _val, comment) => `${indent}include_hidden = ${desiredValue}${comment ?? ''}`
     )
     if (updated !== content) {
       writeFileSync(configPath, updated)
@@ -863,7 +864,7 @@ export async function installHook(
         if (!stderr.includes('already installed')) {
           return {
             success: false,
-            error: `Failed to install plugin: ${(debug ? `${stderr}\n${stdout}` : stderr).trim()}`,
+            error: `Failed to install plugin: ${(stderr || stdout).trim()}`,
           }
         }
         pluginInstalled = true // Already installed is success

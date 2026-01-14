@@ -74,10 +74,20 @@ export function isDebugEnabledForPath(target: string, roots: readonly string[]):
   return false
 }
 
+/**
+ * Finds the most specific root that contains the target path.
+ *
+ * The `root === '/'` check allows the filesystem root to match any path as a
+ * fallback. The length comparison ensures more specific roots (longer paths)
+ * are preferred over less specific ones, so `/home/user` beats `/` even if
+ * `/` appears first in the array.
+ */
 export function findBestMatchingRoot(target: string, roots: readonly string[]): string | null {
   let match: string | null = null
   for (const root of roots) {
+    // Check if target is within this root (exact match, prefix match, or root is filesystem root)
     if (target === root || target.startsWith(`${root}/`) || root === '/') {
+      // Prefer longer (more specific) roots over shorter ones
       if (!match || root.length > match.length) {
         match = root
       }

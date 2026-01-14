@@ -237,9 +237,12 @@ export async function cmdDebug(args: string[], opts: OutputOptions): Promise<num
     }
     default:
       error(`unknown debug action: ${action}`, opts)
-      console.error(
-        'Usage: pickme debug [status|enable|disable|toggle|report] [path] [--log <path>] [--session <id>] [--latest]'
-      )
+      if (!opts.json) {
+        error(
+          'Usage: pickme debug [status|enable|disable|toggle|report] [path] [--log <path>] [--session <id>] [--latest]',
+          opts
+        )
+      }
       return EXIT_USAGE
   }
 }

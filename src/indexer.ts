@@ -211,8 +211,11 @@ async function discoverFilesWithFd(
     }
   }
 
-  // Build exclude flags including disabled directories
-  // Convert absolute disabled dirs to relative paths for fd (which expects patterns, not absolute paths)
+  // Build exclude flags including disabled directories.
+  // fd's --exclude expects patterns or relative paths, not absolute paths.
+  // Convert absolute disabled dirs to relative paths by:
+  // 1. Filter to only dirs under the current root (e.g., /home/user/node_modules under /home/user)
+  // 2. Slice off the root prefix + separator to get relative path (e.g., node_modules)
   const relativeDisabledDirs = disabledDirs
     .filter(dir => dir.startsWith(root + sep))
     .map(dir => dir.slice(root.length + 1))

@@ -7,10 +7,14 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 function setConfigActive(configPath: string, active: boolean): boolean {
   ensureConfigFile(configPath)
   const text = readFileSync(configPath, 'utf8')
-  const activeLine = `active = ${active ? 'true' : 'false'}`
+  const activeValue = active ? 'true' : 'false'
 
+  // Regex captures: (1) leading whitespace, (2) current value, (3) trailing content (including inline comments)
   if (text.match(/^\s*active\s*=/m)) {
-    const updated = text.replace(/^\s*active\s*=\s*(true|false)(.*)$/m, `${activeLine}$2`)
+    const updated = text.replace(
+      /^(\s*)active\s*=\s*(true|false)(.*)$/m,
+      `$1active = ${activeValue}$3`
+    )
     if (updated !== text) {
       writeFileSync(configPath, updated)
       return true
@@ -18,7 +22,7 @@ function setConfigActive(configPath: string, active: boolean): boolean {
     return false
   }
 
-  writeFileSync(configPath, `${activeLine}\n\n${text}`)
+  writeFileSync(configPath, `active = ${activeValue}\n\n${text}`)
   return true
 }
 

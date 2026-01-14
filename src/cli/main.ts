@@ -67,7 +67,9 @@ export async function main(): Promise<number> {
         return await cmdUpdate(args, flags)
       default:
         error(`unknown command: ${command}`, flags)
-        console.error(`Run '${NAME} --help' for usage.`)
+        if (!flags.json) {
+          error(`Run '${NAME} --help' for usage.`, flags)
+        }
         return EXIT_USAGE
     }
   } catch (err) {

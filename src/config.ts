@@ -637,6 +637,11 @@ function validateConfig(raw: unknown): Config {
       }
     }
 
+    // Merge exclude patterns from multiple sources (additive, not overwrite):
+    // 1. Start with default exclude patterns
+    // 2. Add patterns from [[excludes]] array of tables (if present)
+    // 3. Add patterns from index.exclude.patterns (if present)
+    // All sources are merged together using dedupeStrings to avoid duplicates.
     const excludeEntries = parseExcludeEntries(rawConfig.excludes)
     const hasExcludeEntries = excludeEntries !== null
     const hasIndexExclude = Array.isArray(rawConfig.index?.exclude?.patterns)

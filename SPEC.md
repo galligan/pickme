@@ -570,9 +570,7 @@ async function indexFile(filePath: string, root: string): Promise<void> {
 
     // Skip if target is outside indexed roots
     if (!isWithinIndexedRoots(target)) {
-      console.warn(
-        `[file-picker] Symlink escapes roots: ${filePath} -> ${target}`
-      )
+      console.warn(`[file-picker] Symlink escapes roots: ${filePath} -> ${target}`)
       return
     }
 

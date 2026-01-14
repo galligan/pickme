@@ -256,12 +256,12 @@ describe('openDatabase / closeDatabase', () => {
     }
   })
 
-  test('opens database in nested directory path', () => {
+  test('opens database in existing nested directory', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'pickme-test-'))
     const deepPath = join(tempDir, 'a', 'b', 'c', 'test.db')
 
     try {
-      // Ensure parent directories are created
+      // Create parent directories first (openDatabase does not auto-create them)
       mkdirSync(join(tempDir, 'a', 'b', 'c'), { recursive: true })
       const db = openDatabase(deepPath)
       expect(existsSync(deepPath)).toBe(true)

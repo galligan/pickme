@@ -23,7 +23,9 @@ export async function cmdSearch(
   const query = args[0]
   if (!query) {
     error('missing search query', opts)
-    console.error('Usage: pickme search <query> [--root <path>] [--limit <n>] [--exact] [--paths]')
+    if (!opts.json) {
+      error('Usage: pickme search <query> [--root <path>] [--limit <n>] [--exact] [--paths]', opts)
+    }
     return EXIT_USAGE
   }
 
