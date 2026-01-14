@@ -34,4 +34,5 @@ After confirmation:
 Notes:
 
 - Global disable uses `pickme disable`
-- Root disable should update config (prefer existing [[roots]] entry with disabled = true)
+- Root disable should update config (prefer existing [[roots]] entry
+  with disabled = true)

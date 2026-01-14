@@ -44,7 +44,8 @@ namespace = "dev"
 pattern = "node_modules"
 ```
 
-Use `[[excludes]]` to add to the default exclusion list. To replace defaults entirely, use `[index.exclude]`:
+Use `[[excludes]]` to add to the default exclusion list. To replace
+defaults entirely, use `[index.exclude]`:
 
 ```toml
 [index.exclude]

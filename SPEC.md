@@ -2,13 +2,19 @@
 
 ## Motivation
 
-Claude Code's built-in `@` file picker uses fast filesystem traversal, but has limitations in large codebases:
+Claude Code's built-in `@` file picker uses fast filesystem traversal, but
+has limitations in large codebases:
 
-1. **No frecency awareness** — Files you work on frequently are treated the same as files you've never touched
-2. **No git awareness** — Recently committed or currently modified files aren't prioritized
-3. **Limited filtering** — No namespaces like `@claude:` or `@docs:` for quick access to common locations
-4. **No cross-project intelligence** — Each project is isolated; no global index of your commonly-used paths
-5. **Performance in monorepos** — Large repositories can be slow without pre-built indexes
+1. **No frecency awareness** — Files you work on frequently are treated the
+   same as files you've never touched
+2. **No git awareness** — Recently committed or currently modified files
+   aren't prioritized
+3. **Limited filtering** — No namespaces like `@claude:` or `@docs:` for
+   quick access to common locations
+4. **No cross-project intelligence** — Each project is isolated; no global
+   index of your commonly-used paths
+5. **Performance in monorepos** — Large repositories can be slow without
+   pre-built indexes
 
 This spec defines a custom file picker that addresses these limitations through:
 
@@ -21,10 +27,14 @@ This spec defines a custom file picker that addresses these limitations through:
 
 The file picker consists of:
 
-1. **Global SQLite Index** — FTS5-based full-text search across all indexed directories
-2. **SessionStart Hook** — Refreshes the index and frecency scores at session start
-3. **Query Client** — Fast lookup script that Claude Code invokes on `@` autocomplete
-4. **Configuration** — TOML file for weights, namespaces, priorities, and index roots
+1. **Global SQLite Index** — FTS5-based full-text search across all indexed
+   directories
+2. **SessionStart Hook** — Refreshes the index and frecency scores at session
+   start
+3. **Query Client** — Fast lookup script that Claude Code invokes on `@`
+   autocomplete
+4. **Configuration** — TOML file for weights, namespaces, priorities, and
+   index roots
 
 ## Platform Support
 
@@ -33,7 +43,7 @@ The file picker consists of:
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                 ~/.config/claude/file-picker/                   │
 │                                                                 │
@@ -231,7 +241,7 @@ async function suggest(input: { query: string }): Promise<string[]> {
 
 Newline-separated file paths to stdout (max 15):
 
-```
+```text
 src/components/Button.tsx
 src/components/Modal.tsx
 ~/.config/claude/settings.json
@@ -254,15 +264,17 @@ Pre-defined filter sets from config. Resolved to explicit glob patterns.
 
 ### Folder Globs: `@/folder:`
 
-Dynamic pattern matching for a **single folder name**. Matches both `folder/` and `.folder/` variants.
+Dynamic pattern matching for a **single folder name**. Matches both `folder/`
+and `.folder/` variants.
 
-| Prefix          | Expands To                         | Example Match               |
-| --------------- | ---------------------------------- | --------------------------- |
-| `@/components:` | `**/{components,.components}/**/*` | `src/components/Button.tsx` |
-| `@/hooks:`      | `**/{hooks,.hooks}/**/*`           | `lib/.hooks/useAuth.ts`     |
-| `@/claude:`     | `**/{claude,.claude}/**/*`         | `.claude/settings.json`     |
+| Prefix          | Expands To                      | Example Match         |
+| --------------- | ------------------------------- | --------------------- |
+| `@/components:` | `**/{components,.components}/…` | `src/…/Button.tsx`    |
+| `@/hooks:`      | `**/{hooks,.hooks}/**/*`        | `lib/.hooks/useAuth…` |
+| `@/claude:`     | `**/{claude,.claude}/**/*`      | `.claude/settings.…`  |
 
-**Note**: Only single-segment folder names are supported. `@/src/components:` is invalid.
+**Note**: Only single-segment folder names are supported.
+`@/src/components:` is invalid.
 
 ### Inline Globs: `@*.ext`
 
@@ -288,7 +300,9 @@ type Prefix =
   | { type: 'folder'; folder: string }
   | { type: 'glob'; pattern: string }
 
-function parseQuery(query: string): { prefix: Prefix | null; searchQuery: string } {
+function parseQuery(
+  query: string
+): { prefix: Prefix | null; searchQuery: string } {
   // Escape sequence: @@ -> literal @
   if (query.startsWith('@@')) {
     return { prefix: null, searchQuery: query.slice(1) }
@@ -365,12 +379,15 @@ function gitRecencyScore(lastCommitTime: number): number {
 
 ### Git Status Boost
 
-Files appearing in `git status` (modified, staged, untracked) receive a significant boost since they represent active work.
+Files appearing in `git status` (modified, staged, untracked) receive a
+significant boost since they represent active work.
 
 **Important**: Use `-z` flag for reliable parsing with spaces and renames:
 
 ```typescript
-async function getGitStatusBoosts(projectRoot: string): Promise<Map<string, number>> {
+async function getGitStatusBoosts(
+  projectRoot: string
+): Promise<Map<string, number>> {
   // Use -z for NUL-separated output (handles spaces, renames)
   const result = await $`git -C ${projectRoot} status --porcelain -z`.quiet()
   const boosts = new Map<string, number>()
@@ -534,7 +551,8 @@ function isFTSSyntaxError(err: Error): boolean {
 ## Symlink Handling
 
 - **Symlinks are followed** during indexing
-- **Deduplication**: If a symlink target is also indexed directly, prefer the canonical path
+- **Deduplication**: If a symlink target is also indexed directly, prefer the
+  canonical path
 - **Broken symlinks**: Skip with warning, don't fail the index
 - **Scope check**: Skip symlinks that resolve outside indexed roots
 
@@ -552,7 +570,9 @@ async function indexFile(filePath: string, root: string): Promise<void> {
 
     // Skip if target is outside indexed roots
     if (!isWithinIndexedRoots(target)) {
-      console.warn(`[file-picker] Symlink escapes indexed roots: ${filePath} -> ${target}`)
+      console.warn(
+        `[file-picker] Symlink escapes roots: ${filePath} -> ${target}`
+      )
       return
     }
 
@@ -568,7 +588,7 @@ async function indexFile(filePath: string, root: string): Promise<void> {
 
 ### Location
 
-```
+```text
 ~/.config/claude/file-picker/config.toml
 ```
 
@@ -643,7 +663,7 @@ warn_threshold_mb = 500
 
 ## File Structure
 
-```
+```text
 ~/.config/claude/file-picker/
 ├── SPEC.md                    # This specification
 ├── config.toml                # User configuration
@@ -656,7 +676,7 @@ warn_threshold_mb = 500
 │   ├── frecency.ts            # Frecency scoring
 │   ├── git.ts                 # Git log/status parsing
 │   ├── config.ts              # Config loading with defaults
-│   ├── prefix.ts              # Prefix parsing (namespace, folder glob, inline glob)
+│   ├── prefix.ts              # Prefix parsing
 │   └── errors.ts              # Error handling utilities
 ├── hooks/
 │   └── session-start.ts       # SessionStart hook handler
@@ -716,9 +736,12 @@ bun run ~/.config/claude/file-picker/hooks/session-start.ts &
 
 ### Phase 2
 
-- **Claude session tracking** — Log files accessed during sessions for better frecency
-- **Human vs Claude weighting** — Distinguish git commits by author (Claude co-author vs human)
-- **File watcher daemon** — Optional background process for real-time index updates
+- **Claude session tracking** — Log files accessed during sessions for
+  better frecency
+- **Human vs Claude weighting** — Distinguish git commits by author (Claude
+  co-author vs human)
+- **File watcher daemon** — Optional background process for real-time index
+  updates
 
 ### Phase 3
 
@@ -729,28 +752,46 @@ bun run ~/.config/claude/file-picker/hooks/session-start.ts &
 ### Phase 4
 
 - **Windows compatibility** — Support Windows paths and filesystems
-- **Cross-machine sync** — Sync frecency data via dotfiles (relative paths for portability)
-- **Team namespaces** — Project-level namespace definitions in `.claude/file-picker.toml`
+- **Cross-machine sync** — Sync frecency data via dotfiles (relative paths
+  for portability)
+- **Team namespaces** — Project-level namespace definitions in
+  `.claude/file-picker.toml`
 - **Content search** — Optional FTS on file contents (not just paths)
 
 ## Decisions Made
 
-| Question           | Decision                                      | Rationale                                        |
-| ------------------ | --------------------------------------------- | ------------------------------------------------ |
-| Query scoping      | Project-first, always                         | More intuitive; use namespaces for global search |
-| Output paths       | Smart (relative in-project, absolute outside) | Best UX for Claude context                       |
-| `@/folder:` syntax | Single-segment only                           | Simpler parsing; covers 99% of use cases         |
-| Platform support   | macOS/Linux now                               | Windows deferred to Phase 4                      |
-| Latency budget     | 100ms easily achievable                       | Bun + FTS5 benchmarks at ~10ms                   |
-| Tokenization       | `unicode61` without stemmer                   | Preserves path prefix matching                   |
-| Schema design      | Separate `files_meta` + FTS5 external content | Proper PK, easier updates/deletes                |
+**Query scoping** — Project-first, always
+: More intuitive; use namespaces for global search
+
+**Output paths** — Smart (relative in-project, absolute outside)
+: Best UX for Claude context
+
+**`@/folder:` syntax** — Single-segment only
+: Simpler parsing; covers 99% of use cases
+
+**Platform support** — macOS/Linux now
+: Windows deferred to Phase 4
+
+**Latency budget** — 100ms easily achievable
+: Bun + FTS5 benchmarks at ~10ms
+
+**Tokenization** — `unicode61` without stemmer
+: Preserves path prefix matching
+
+**Schema design** — Separate `files_meta` + FTS5 external content
+: Proper PK, easier updates/deletes
 
 ## Open Questions
 
-1. **Stale entry cleanup** — Prune files deleted >30 days ago on session start. Is this aggressive enough?
+1. **Stale entry cleanup** — Prune files deleted >30 days ago on session
+   start. Is this aggressive enough?
 
-2. **Conflict resolution** — If the same relative path exists in multiple roots (via additionalDirs), show both with root prefix? Or prefer the one with higher frecency?
+2. **Conflict resolution** — If the same relative path exists in multiple
+   roots (via additionalDirs), show both with root prefix? Or prefer the one
+   with higher frecency?
 
-3. **Cold start behavior** — First run with empty database: fall back to `fd` and show "Indexing in background..." message?
+3. **Cold start behavior** — First run with empty database: fall back to `fd`
+   and show "Indexing in background..." message?
 
-4. **Schema migrations** — How to handle adding new columns in v2? SQLite `ALTER TABLE` or rebuild?
+4. **Schema migrations** — How to handle adding new columns in v2? SQLite
+   `ALTER TABLE` or rebuild?

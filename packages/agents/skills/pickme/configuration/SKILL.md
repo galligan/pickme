@@ -42,7 +42,8 @@ Notes:
 - `[[excludes]]` is additive to defaults
 - `index.exclude.patterns` overrides defaults and excludes when set
 - `index.include_gitignored` is an alias for `index.exclude.gitignored_files`
-- Use `[[roots]]` with `disabled = true` or `index.disabled = ["/path"]` to disable a root
+- Use `[[roots]]` with `disabled = true` or `index.disabled = ["/path"]`
+  to disable a root
 
 ## Common Recipes
 

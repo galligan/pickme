@@ -1,6 +1,8 @@
 # Performance
 
-This document describes how Pickme stays fast today and the improvements we plan to deliver next. The focus is on real-world latency: the time between typing `@` and seeing suggestions.
+This document describes how Pickme stays fast today and the improvements
+we plan to deliver next. The focus is on real-world latency: the time
+between typing `@` and seeing suggestions.
 
 ## Current performance characteristics
 
@@ -17,7 +19,8 @@ Goal: eliminate per-query process startup.
 Plan:
 
 - Run a long-lived Pickme daemon with a pre-opened SQLite connection.
-- The hook should try the daemon first. If not running, it starts the daemon and retries.
+- The hook should try the daemon first. If not running, it starts the
+  daemon and retries.
 - Shut down after a configurable idle period (e.g. 6 hours).
 
 Details:
@@ -35,7 +38,8 @@ Goal: avoid repeated DB queries during typing.
 
 Plan:
 
-- Cache results for the previous prefix and filter/rerank in memory for the next prefix.
+- Cache results for the previous prefix and filter/rerank in memory for
+  the next prefix.
 - Treat consecutive queries as a single typing session while the daemon is alive.
 
 Details:
@@ -106,7 +110,8 @@ Goal: reduce overhead for the fallback path (when daemon is unavailable).
 
 Plan:
 
-- Add a minimal `pickme query` subcommand that only performs a search and prints results.
+- Add a minimal `pickme query` subcommand that only performs a search
+  and prints results.
 
 Details:
 
@@ -118,7 +123,8 @@ Goal: reuse recent results even with short-lived processes.
 
 Plan:
 
-- Write cached results to `~/.local/share/pickme/cache/` keyed by `(cwd, namespace, query)`.
+- Write cached results to `~/.local/share/pickme/cache/` keyed by
+  `(cwd, namespace, query)`.
 - Use a short TTL to avoid stale results.
 
 ### 9) Early cutoff for incomplete queries
@@ -132,7 +138,8 @@ Plan:
 
 ### 10) Debounce (intentionally skipped for now)
 
-We are not adding debouncing until we observe evidence that Claude triggers redundant calls per keystroke. Debug logging will inform this.
+We are not adding debouncing until we observe evidence that Claude
+triggers redundant calls per keystroke. Debug logging will inform this.
 
 ## Measuring impact
 
@@ -144,4 +151,6 @@ We are not adding debouncing until we observe evidence that Claude triggers redu
 
 ## Notes on memory
 
-Every in-memory optimization is bounded (TTL or LRU) to keep memory stable. Defaults should be safe for typical dev machines and can be tuned via config.
+Every in-memory optimization is bounded (TTL or LRU) to keep memory
+stable. Defaults should be safe for typical dev machines and can be
+tuned via config.

@@ -52,18 +52,21 @@ pickme init
 
 This will:
 
-1. Detect your Claude Code install path to place `file-suggestion.sh` (global recommended, project optional)
+1. Detect your Claude Code install path to place `file-suggestion.sh`
+   (global recommended, project optional)
 2. Back up any existing `file-suggestion.sh` that exists
 3. Create the file-suggestion script and register `fileSuggestion` in `.claude/settings.json`
 4. **`@mention` files in Claude!** That's it.
 
-> **Note:** Initial indexing takes ~50-200ms depending on codebase size. After that, searches are near-instant.
+> **Note:** Initial indexing takes ~50-200ms depending on codebase size.
+> After that, searches are near-instant.
 
 Full Documentation: [`docs/README.md`](docs/README.md)
 
 ## Configuration
 
-Pickme is configured via `~/.config/pickme/config.toml` and supports namespaces, roots, and excludes.
+Pickme is configured via `~/.config/pickme/config.toml` and supports
+namespaces, roots, and excludes.
 
 See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for full details and recipes.
 
@@ -71,7 +74,8 @@ See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for full details and recipe
 
 1. **Indexing**: `pickme index` scans directories and builds an FTS5 SQLite index
 2. **Frecency**: Git commit history is analyzed to score files by activity
-3. **Session hook**: When Claude Code starts, stale indexes are refreshed in the background
+3. **Session hook**: When Claude Code starts, stale indexes are refreshed
+   in the background
 4. **Search**: Queries hit the FTS5 index and results are ranked by frecency
 
 ## File Locations

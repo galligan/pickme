@@ -10,7 +10,7 @@ Systematic troubleshooting for pickme indexing issues.
 
 ## Decision Tree
 
-```
+```text
 File missing from pickme?
 |-- Does file exist?
 |   |-- No -> File path issue, not pickme

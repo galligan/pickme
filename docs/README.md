@@ -1,6 +1,7 @@
 # Documentation
 
-This folder contains expanded documentation for Pickme. Start here for usage details beyond the quick README.
+This folder contains expanded documentation for Pickme. Start here for
+usage details beyond the quick README.
 
 ## Contents
 
@@ -9,7 +10,8 @@ This folder contains expanded documentation for Pickme. Start here for usage det
 
 ## File Suggestions in Claude Code
 
-Pickme integrates with Claude Code's file suggestions so you can quickly select files using `@`.
+Pickme integrates with Claude Code's file suggestions so you can quickly
+select files using `@`.
 
 ### Basic usage
 
@@ -46,7 +48,8 @@ Use `~` to trigger fuzzy matching.
 - `@apps:~file` — fuzzy match within a namespace
 - `@apps/~file` — fuzzy match within a folder shorthand
 
-If a normal search returns zero results, Pickme automatically falls back to fuzzy matching so you still see close hits.
+If a normal search returns zero results, Pickme automatically falls back
+to fuzzy matching so you still see close hits.
 
 ### Hidden and gitignored files
 
