@@ -614,3 +614,191 @@ describe('getConfigPath', () => {
     expect(path.startsWith(homedir())).toBe(true)
   })
 })
+
+// ============================================================================
+// Daemon Config Tests
+// ============================================================================
+
+describe('daemon config', () => {
+  test('default daemon config is applied', async () => {
+    const config = await loadConfig('/nonexistent/path/config.toml')
+    expect(config.daemon).toBeDefined()
+    expect(config.daemon.enabled).toBe(true)
+    expect(config.daemon.idle_minutes).toBe(30)
+    expect(config.daemon.fallback_to_cli).toBe(true)
+    expect(config.daemon.socket_path).toBeUndefined()
+  })
+
+  test('daemon.enabled defaults to true', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+idle_minutes = 60
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.enabled).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.idle_minutes defaults to 30', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+enabled = false
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.idle_minutes).toBe(30)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.fallback_to_cli defaults to true', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+enabled = true
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.fallback_to_cli).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('custom daemon.idle_minutes is validated (valid)', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+idle_minutes = 60
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.idle_minutes).toBe(60)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.idle_minutes accepts minimum value (1)', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+idle_minutes = 1
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.idle_minutes).toBe(1)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.idle_minutes accepts maximum value (1440)', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+idle_minutes = 1440
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.idle_minutes).toBe(1440)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.idle_minutes rejects value below minimum', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+idle_minutes = 0
+`)
+
+    try {
+      await expect(loadConfig(path)).rejects.toThrow(ConfigError)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.idle_minutes rejects value above maximum', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+idle_minutes = 1441
+`)
+
+    try {
+      await expect(loadConfig(path)).rejects.toThrow(ConfigError)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.socket_path is optional', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+enabled = true
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.socket_path).toBeUndefined()
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.socket_path accepts valid path', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+socket_path = "/tmp/custom-pickme.sock"
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.socket_path).toBe('/tmp/custom-pickme.sock')
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('daemon.socket_path expands tilde', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+socket_path = "~/pickme.sock"
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.socket_path).not.toContain('~')
+      expect(config.daemon.socket_path).toContain(homedir())
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('all daemon options can be set together', async () => {
+    const { path, cleanup } = createTempConfig(`
+[daemon]
+enabled = false
+idle_minutes = 120
+socket_path = "/custom/socket.sock"
+fallback_to_cli = false
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.daemon.enabled).toBe(false)
+      expect(config.daemon.idle_minutes).toBe(120)
+      expect(config.daemon.socket_path).toBe('/custom/socket.sock')
+      expect(config.daemon.fallback_to_cli).toBe(false)
+    } finally {
+      cleanup()
+    }
+  })
+})

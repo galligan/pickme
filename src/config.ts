@@ -101,6 +101,20 @@ export interface IncludeConfig {
 }
 
 /**
+ * Daemon configuration for background service.
+ */
+export interface DaemonConfig {
+  /** Whether daemon mode is enabled (default: true) */
+  readonly enabled: boolean
+  /** Idle timeout in minutes before auto-shutdown (default: 30) */
+  readonly idle_minutes: number
+  /** Custom socket path (optional) */
+  readonly socket_path?: string
+  /** Whether to fall back to CLI when daemon unavailable (default: true) */
+  readonly fallback_to_cli: boolean
+}
+
+/**
  * Index configuration for directory scanning.
  */
 export interface IndexConfig {
@@ -134,6 +148,8 @@ export interface Config {
   readonly priorities: PrioritiesConfig
   /** Index configuration. */
   readonly index: IndexConfig
+  /** Daemon configuration. */
+  readonly daemon: DaemonConfig
 }
 
 // ============================================================================
@@ -228,6 +244,11 @@ export const DEFAULT_CONFIG: Config = {
       warn_threshold_mb: 500,
     },
   },
+  daemon: {
+    enabled: true,
+    idle_minutes: 30,
+    fallback_to_cli: true,
+  },
 } as const
 
 // ============================================================================
@@ -282,6 +303,7 @@ function getExpandedDefaults(): Config {
       depth: { ...DEFAULT_CONFIG.index.depth },
       limits: { ...DEFAULT_CONFIG.index.limits },
     },
+    daemon: { ...DEFAULT_CONFIG.daemon },
   }
 }
 
@@ -319,6 +341,12 @@ interface RawConfig {
     include_hidden?: boolean
     depth?: Record<string, number>
     limits?: Partial<IndexLimitsConfig>
+  }
+  daemon?: {
+    enabled?: boolean
+    idle_minutes?: number
+    socket_path?: string
+    fallback_to_cli?: boolean
   }
 }
 
@@ -601,6 +629,44 @@ function validateIndex(raw: RawConfig['index'] | undefined): IndexConfig {
 }
 
 /**
+ * Validates daemon configuration.
+ * Validates idle_minutes is within valid range (1-1440).
+ */
+function validateDaemon(raw: RawConfig['daemon'] | undefined): DaemonConfig {
+  const defaults = DEFAULT_CONFIG.daemon
+
+  const enabled = validateBoolean(raw?.enabled, defaults.enabled, 'daemon.enabled') ?? true
+  const fallback_to_cli =
+    validateBoolean(raw?.fallback_to_cli, defaults.fallback_to_cli, 'daemon.fallback_to_cli') ??
+    true
+
+  // Validate idle_minutes with range check (1-1440 minutes = 1 minute to 24 hours)
+  let idle_minutes = defaults.idle_minutes
+  if (raw?.idle_minutes !== undefined) {
+    idle_minutes = validateNumber(raw.idle_minutes, defaults.idle_minutes, 'daemon.idle_minutes')
+    if (idle_minutes < 1 || idle_minutes > 1440) {
+      throw ConfigError.validationError('daemon.idle_minutes must be between 1 and 1440')
+    }
+  }
+
+  // Validate socket_path if provided
+  let socket_path: string | undefined
+  if (raw?.socket_path !== undefined) {
+    if (typeof raw.socket_path !== 'string' || raw.socket_path.trim().length === 0) {
+      throw ConfigError.validationError('daemon.socket_path must be a non-empty string')
+    }
+    socket_path = expandTilde(raw.socket_path)
+  }
+
+  return {
+    enabled,
+    idle_minutes,
+    socket_path,
+    fallback_to_cli,
+  }
+}
+
+/**
  * Validates raw TOML config and returns a fully typed Config object.
  * Merges with defaults for any missing values.
  */
@@ -613,6 +679,7 @@ function validateConfig(raw: unknown): Config {
       namespaces: validateNamespaces(rawConfig.namespaces),
       priorities: validatePriorities(rawConfig.priorities),
       index: validateIndex(rawConfig.index),
+      daemon: validateDaemon(rawConfig.daemon),
     }
 
     const rootEntries = parseRootEntries(rawConfig.roots)
