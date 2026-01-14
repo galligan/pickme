@@ -22,7 +22,8 @@
     "@inquirer/prompts": "^7.3.2",
     "ora": "^8.2.0",
     "toml": "^3.0.0",
-    "yoctocolors": "^2.1.2"
+    "yoctocolors": "^2.1.2",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/bun": "latest",
