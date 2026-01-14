@@ -30,7 +30,10 @@ let testConfigPath: string
 // ============================================================================
 
 beforeEach(async () => {
-  testDir = join(tmpdir(), `session-start-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  testDir = join(
+    tmpdir(),
+    `session-start-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  )
   await mkdir(testDir, { recursive: true })
   testDbPath = join(testDir, 'index.db')
   testConfigPath = join(testDir, 'config.toml')
@@ -67,13 +70,13 @@ describe('checkStaleness', () => {
   })
 
   test('returns true when lastIndexed is older than threshold', () => {
-    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000)
+    const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000
     const result = checkStaleness(twoHoursAgo)
     expect(result).toBe(true)
   })
 
   test('returns false when lastIndexed is within threshold', () => {
-    const thirtyMinutesAgo = Date.now() - (30 * 60 * 1000)
+    const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000
     const result = checkStaleness(thirtyMinutesAgo)
     expect(result).toBe(false)
   })
@@ -126,10 +129,13 @@ describe('determineProjectRoot', () => {
 describe('runSessionStartHook', () => {
   test('completes within 100ms', async () => {
     // Create a minimal config
-    await writeFile(testConfigPath, `
+    await writeFile(
+      testConfigPath,
+      `
 [index]
 roots = ["${testDir}"]
-`)
+`
+    )
 
     const start = performance.now()
     const result = await runSessionStartHook({
@@ -164,10 +170,13 @@ roots = ["${testDir}"]
     const invalidDbDir = join(testDir, 'invalid.db')
     await mkdir(invalidDbDir)
 
-    await writeFile(testConfigPath, `
+    await writeFile(
+      testConfigPath,
+      `
 [index]
 roots = ["${testDir}"]
-`)
+`
+    )
 
     const result = await runSessionStartHook({
       configPath: testConfigPath,
@@ -201,10 +210,13 @@ roots = ["${testDir}"]
     await mkdir(root1)
     await mkdir(root2)
 
-    await writeFile(testConfigPath, `
+    await writeFile(
+      testConfigPath,
+      `
 [index]
 roots = ["${root1}", "${root2}"]
-`)
+`
+    )
 
     const result = await runSessionStartHook({
       configPath: testConfigPath,
@@ -219,10 +231,13 @@ roots = ["${root1}", "${root2}"]
   })
 
   test('identifies project root from environment', async () => {
-    await writeFile(testConfigPath, `
+    await writeFile(
+      testConfigPath,
+      `
 [index]
 roots = ["${testDir}"]
-`)
+`
+    )
 
     const result = await runSessionStartHook({
       configPath: testConfigPath,
@@ -246,10 +261,13 @@ describe('background refresh scheduling', () => {
     await mkdir(root)
     await writeFile(join(root, 'test.ts'), 'content')
 
-    await writeFile(testConfigPath, `
+    await writeFile(
+      testConfigPath,
+      `
 [index]
 roots = ["${root}"]
-`)
+`
+    )
 
     const result = await runSessionStartHook({
       configPath: testConfigPath,
@@ -267,10 +285,13 @@ roots = ["${root}"]
     const root = join(testDir, 'fresh-root')
     await mkdir(root)
 
-    await writeFile(testConfigPath, `
+    await writeFile(
+      testConfigPath,
+      `
 [index]
 roots = ["${root}"]
-`)
+`
+    )
 
     // First run - indexes everything
     const firstResult = await runSessionStartHook({
@@ -301,10 +322,13 @@ roots = ["${root}"]
 
 describe('CLI execution', () => {
   test('main script exits with code 0 on success', async () => {
-    await writeFile(testConfigPath, `
+    await writeFile(
+      testConfigPath,
+      `
 [index]
 roots = ["${testDir}"]
-`)
+`
+    )
 
     // Run the actual script
     const proc = Bun.spawn(['bun', 'run', join(__dirname, 'session-start.ts')], {

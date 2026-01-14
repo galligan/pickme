@@ -35,6 +35,7 @@ function createTempProject(): {
   mkdirSync(join(tempDir, 'src', 'components'), { recursive: true })
   mkdirSync(join(tempDir, 'src', 'utils'), { recursive: true })
   mkdirSync(join(tempDir, 'docs'), { recursive: true })
+  mkdirSync(join(tempDir, 'claude'), { recursive: true })
 
   // Create some files
   writeFileSync(join(tempDir, 'src', 'components', 'Button.tsx'), 'export const Button = () => {}')
@@ -44,6 +45,8 @@ function createTempProject(): {
   writeFileSync(join(tempDir, 'docs', 'README.md'), '# Documentation')
   writeFileSync(join(tempDir, 'package.json'), '{"name": "test"}')
   writeFileSync(join(tempDir, 'CLAUDE.md'), '# Claude Config')
+  writeFileSync(join(tempDir, 'claude', 'settings.json'), '{"source": "test"}')
+  writeFileSync(join(tempDir, 'My File.txt'), 'hello')
 
   return {
     root: tempDir,
@@ -160,22 +163,22 @@ describe('FilePicker.search', () => {
     const results = await picker.search('Button')
 
     expect(results.length).toBeGreaterThanOrEqual(1)
-    expect(results.some((r) => r.filename === 'Button.tsx')).toBe(true)
+    expect(results.some(r => r.filename === 'Button.tsx')).toBe(true)
   })
 
   test('finds files by path component', async () => {
     const results = await picker.search('components')
 
     expect(results.length).toBeGreaterThanOrEqual(2)
-    expect(results.some((r) => r.filename === 'Button.tsx')).toBe(true)
-    expect(results.some((r) => r.filename === 'Modal.tsx')).toBe(true)
+    expect(results.some(r => r.filename === 'Button.tsx')).toBe(true)
+    expect(results.some(r => r.filename === 'Modal.tsx')).toBe(true)
   })
 
   test('supports prefix matching', async () => {
     const results = await picker.search('Butt')
 
     expect(results.length).toBeGreaterThanOrEqual(1)
-    expect(results.some((r) => r.filename === 'Button.tsx')).toBe(true)
+    expect(results.some(r => r.filename === 'Button.tsx')).toBe(true)
   })
 
   test('filters by project root', async () => {
@@ -184,7 +187,7 @@ describe('FilePicker.search', () => {
     })
 
     // All results should be under project root
-    expect(results.every((r) => r.path.startsWith(project.root))).toBe(true)
+    expect(results.every(r => r.path.startsWith(project.root))).toBe(true)
   })
 
   test('respects limit option', async () => {
@@ -255,7 +258,7 @@ describe('FilePicker.search with prefixes', () => {
     })
 
     // Should find README.md and CLAUDE.md
-    expect(results.every((r) => r.filename.endsWith('.md'))).toBe(true)
+    expect(results.every(r => r.filename.endsWith('.md'))).toBe(true)
   })
 
   test('handles folder prefix @/folder:', async () => {
@@ -265,6 +268,23 @@ describe('FilePicker.search with prefixes', () => {
 
     // Should find files in components folder
     expect(results.length).toBeGreaterThanOrEqual(0)
+  })
+
+  test('filters namespace patterns for @claude:', async () => {
+    const results = await picker.search('@claude:', {
+      projectRoot: project.root,
+    })
+
+    expect(results.length).toBeGreaterThan(0)
+    expect(results.every(r => r.relativePath.startsWith('claude/'))).toBe(true)
+  })
+
+  test('supports fuzzy prefix @~', async () => {
+    const results = await picker.search('@~myfl', {
+      projectRoot: project.root,
+    })
+
+    expect(results.some(r => r.relativePath === 'My File.txt')).toBe(true)
   })
 })
 
@@ -311,7 +331,7 @@ describe('FilePicker.ensureIndexed', () => {
     // After indexing - should find Button.tsx
     const afterResults = await picker.search('Button')
     expect(afterResults.length).toBeGreaterThanOrEqual(1)
-    expect(afterResults.some((r) => r.filename === 'Button.tsx')).toBe(true)
+    expect(afterResults.some(r => r.filename === 'Button.tsx')).toBe(true)
   })
 
   test('indexes multiple roots', async () => {
@@ -388,7 +408,7 @@ describe('FilePicker.refreshIndex', () => {
     // Should find the new file
     const results = await picker.search('NewComponent')
     expect(results.length).toBeGreaterThanOrEqual(1)
-    expect(results.some((r) => r.filename === 'NewComponent.tsx')).toBe(true)
+    expect(results.some(r => r.filename === 'NewComponent.tsx')).toBe(true)
   })
 
   test('returns refresh statistics', async () => {

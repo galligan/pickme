@@ -21,6 +21,7 @@ import {
   DEFAULT_CONFIG,
   type Config,
 } from './config'
+import { CONFIG_TEMPLATE } from './config-template'
 import { ConfigError } from './errors'
 
 // ============================================================================
@@ -113,11 +114,56 @@ describe('DEFAULT_CONFIG', () => {
   test('has expected index defaults', () => {
     expect(DEFAULT_CONFIG.index.roots).toContain('~/Developer')
     expect(DEFAULT_CONFIG.index.roots).toContain('~/.config')
+    expect(DEFAULT_CONFIG.index.include_hidden).toBe(false)
     expect(DEFAULT_CONFIG.index.exclude.patterns).toContain('node_modules')
     expect(DEFAULT_CONFIG.index.exclude.patterns).toContain('.git')
+    expect(DEFAULT_CONFIG.index.exclude.gitignored_files).toBe(true)
     expect(DEFAULT_CONFIG.index.depth.default).toBe(10)
     expect(DEFAULT_CONFIG.index.limits.max_files_per_root).toBe(50000)
     expect(DEFAULT_CONFIG.index.limits.warn_threshold_mb).toBe(500)
+  })
+})
+
+describe('include_hidden', () => {
+  test('parses index.include_hidden', async () => {
+    const { path, cleanup } = createTempConfig(`
+[index]
+include_hidden = true
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.index.include_hidden).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('include_gitignored flips exclude.gitignored_files', async () => {
+    const { path, cleanup } = createTempConfig(`
+[index]
+include_gitignored = true
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.index.exclude.gitignored_files).toBe(false)
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('CONFIG_TEMPLATE', () => {
+  test('parses without validation errors', async () => {
+    const { path, cleanup } = createTempConfig(CONFIG_TEMPLATE)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.index.roots).toEqual(DEFAULT_CONFIG.index.roots.map(root => expandTilde(root)))
+    } finally {
+      cleanup()
+    }
   })
 })
 
@@ -138,7 +184,7 @@ describe('loadConfig', () => {
     const config = await loadConfig('/nonexistent/path/config.toml')
 
     // Roots should have ~ expanded
-    expect(config.index.roots.every((r) => !r.includes('~'))).toBe(true)
+    expect(config.index.roots.every(r => !r.includes('~'))).toBe(true)
     // Namespaces should have ~ expanded
     expect(config.namespaces.dev).not.toContain('~')
     expect(config.namespaces.config).not.toContain('~')
@@ -196,6 +242,20 @@ patterns = ["*.custom", "custom/**"]
     }
   })
 
+  test('keeps default namespaces when table is empty', async () => {
+    const { path, cleanup } = createTempConfig(`
+[namespaces]
+`)
+
+    try {
+      const config = await loadConfig(path)
+      expect(config.namespaces.claude).toEqual(['.claude/**', '**/claude/**'])
+      expect(config.namespaces.docs).toEqual(['docs/**', '*.md', 'README*', 'CHANGELOG*'])
+    } finally {
+      cleanup()
+    }
+  })
+
   test('loads custom priorities', async () => {
     const { path, cleanup } = createTempConfig(`
 [priorities]
@@ -231,11 +291,68 @@ warn_threshold_mb = 1000
     try {
       const config = await loadConfig(path)
       expect(config.index.roots.length).toBe(2)
-      expect(config.index.roots.every((r) => !r.includes('~'))).toBe(true)
+      expect(config.index.roots.every(r => !r.includes('~'))).toBe(true)
       expect(config.index.exclude.patterns).toEqual(['vendor', 'cache'])
       expect(config.index.depth.default).toBe(15)
       expect(config.index.limits.max_files_per_root).toBe(100000)
       expect(config.index.limits.warn_threshold_mb).toBe(1000)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('loads root and exclude tables with index aliases', async () => {
+    const { path, cleanup } = createTempConfig(`
+active = false
+
+[[roots]]
+path = "~/Projects"
+namespace = "proj"
+disabled = true
+
+[[roots]]
+path = "~/Work"
+
+[[excludes]]
+pattern = "coverage"
+
+[index]
+max_depth = 7
+include_gitignored = true
+`)
+
+    try {
+      const config = await loadConfig(path)
+      const expandedProjects = join(homedir(), 'Projects')
+      const expandedWork = join(homedir(), 'Work')
+
+      expect(config.index.roots).toEqual([expandedProjects, expandedWork])
+      expect(config.index.disabled).toEqual([expandedProjects])
+      expect(config.namespaces.proj).toBe(expandedProjects)
+      expect(config.index.exclude.patterns).toContain('coverage')
+      expect(config.index.exclude.patterns).toContain('node_modules')
+      expect(config.index.depth.default).toBe(7)
+      expect(config.index.exclude.gitignored_files).toBe(false)
+      expect(config.active).toBe(false)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('index.exclude merges with root-level excludes', async () => {
+    const { path, cleanup } = createTempConfig(`
+[[excludes]]
+pattern = "coverage"
+
+[index.exclude]
+patterns = ["custom"]
+`)
+
+    try {
+      const config = await loadConfig(path)
+      // Both sources are merged: root-level excludes + index.exclude.patterns
+      expect(config.index.exclude.patterns).toContain('coverage')
+      expect(config.index.exclude.patterns).toContain('custom')
     } finally {
       cleanup()
     }

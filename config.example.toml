@@ -3,6 +3,8 @@
 # Copy to ~/.config/pickme/config.toml and customize.
 # All values shown are defaults - uncomment to override.
 
+# active = true                   # disable to bypass pickme in file suggester
+
 # ------------------------------------------------------------------------------
 # Frecency Weights
 # ------------------------------------------------------------------------------
@@ -54,51 +56,54 @@
 # Controls what directories are indexed and how.
 
 [index]
-# roots = ["~/Developer", "~/.config"]
+# max_depth = 10
+# include_gitignored = false
+# include_hidden = false
 
-# Exclude patterns - these are always skipped during indexing.
-# Pickme includes sensible defaults for common build artifacts, caches, etc.
-[index.exclude]
-# patterns = [
-#   ".git",
-#   ".svn",
-#   ".hg",
-#   "node_modules",
-#   "vendor",
-#   ".pnpm",
-#   "dist",
-#   "build",
-#   "out",
-#   ".next",
-#   ".nuxt",
-#   ".output",
-#   "target",
-#   ".cache",
-#   "__pycache__",
-#   ".pytest_cache",
-#   ".mypy_cache",
-#   ".turbo",
-#   ".parcel-cache",
-#   "*.min.js",
-#   "*.min.css",
-#   "*.map",
-#   "*.pyc",
-#   "*.pyo",
-#   "*.wasm",
-#   ".tmp",
-#   ".temp",
+# Roots - directories to index (recommended form).
+# Use namespace to create @namespace shortcuts.
+
+# [[roots]]
+# path = "~/Developer"
+# namespace = "dev"
+# disabled = false
+
+# [[roots]]
+# path = "~/.config"
+# namespace = "config"
+# disabled = false
+
+# Disabled directories - specific paths to skip entirely.
+# Use this to exclude specific projects from pickme's index.
+# Unlike exclude patterns, these are absolute paths (~ expanded).
+# index.disabled = [
+#   "~/Developer/secret-project",
+#   "~/Developer/legacy-app",
 # ]
 
-# Enable to also exclude files matching .gitignore patterns.
-# Off by default - gitignored files are often still useful to reference.
-# gitignored_files = true
+# Excludes - patterns to skip during indexing.
+# These add on top of the default exclude list.
+# To replace defaults, use [index.exclude] below.
+
+# [[excludes]]
+# pattern = ".git"
+
+# [[excludes]]
+# pattern = "node_modules"
+
+# [[excludes]]
+# pattern = "dist"
+
+# Override defaults (advanced).
+[index.exclude]
+# patterns = []
+# gitignored_files = false
 
 # Include patterns - explicitly include files even if they match excludes.
-# Use for files you want despite default exclusions.
 [index.include]
 # patterns = []
 
-# Max depth per root directory.
+# Max depth per root directory override.
 [index.depth]
 # default = 10
 # "~/.config" = 5                   # shallower for config directories

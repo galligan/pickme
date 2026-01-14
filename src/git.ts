@@ -7,23 +7,23 @@
  * @module git
  */
 
-import { $ } from "bun";
-import * as path from "node:path";
+import { $ } from 'bun'
+import * as path from 'node:path'
 
 /** Git recency data for a single file */
 export interface GitRecencyData {
   /** Unix timestamp of the most recent commit touching this file */
-  lastCommit: number;
+  lastCommit: number
   /** Number of commits touching this file within the time window */
-  frequency: number;
+  frequency: number
 }
 
 /** Options for getGitRecency */
 export interface GitRecencyOptions {
   /** How far back to look (default: "90 days ago") */
-  since?: string;
+  since?: string
   /** Maximum number of commits to parse (default: 1000) */
-  maxCommits?: number;
+  maxCommits?: number
 }
 
 /**
@@ -42,13 +42,11 @@ export interface GitRecencyOptions {
  */
 export async function isGitRepo(dir: string): Promise<boolean> {
   try {
-    const result = await $`git -C ${dir} rev-parse --is-inside-work-tree`
-      .quiet()
-      .nothrow();
-    return result.exitCode === 0 && result.stdout.toString().trim() === "true";
+    const result = await $`git -C ${dir} rev-parse --is-inside-work-tree`.quiet().nothrow()
+    return result.exitCode === 0 && result.stdout.toString().trim() === 'true'
   } catch {
     // Git not installed or other error
-    return false;
+    return false
   }
 }
 
@@ -72,59 +70,55 @@ export async function isGitRepo(dir: string): Promise<boolean> {
  * // boosts.get("/path/to/project/src/index.ts") -> 5.0 (if modified)
  * ```
  */
-export async function getGitStatusBoosts(
-  projectRoot: string
-): Promise<Map<string, number>> {
-  const boosts = new Map<string, number>();
+export async function getGitStatusBoosts(projectRoot: string): Promise<Map<string, number>> {
+  const boosts = new Map<string, number>()
 
   try {
     // Use -z for NUL-separated output (handles spaces, renames)
-    const result = await $`git -C ${projectRoot} status --porcelain -z`
-      .quiet()
-      .nothrow();
+    const result = await $`git -C ${projectRoot} status --porcelain -z`.quiet().nothrow()
 
     if (result.exitCode !== 0) {
-      return boosts;
+      return boosts
     }
 
-    const output = result.stdout.toString();
+    const output = result.stdout.toString()
     if (!output) {
-      return boosts;
+      return boosts
     }
 
     // Split on NUL, filter empty entries
-    const entries = output.split("\0").filter(Boolean);
+    const entries = output.split('\0').filter(Boolean)
 
     for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
-      if (!entry || entry.length < 3) continue;
+      const entry = entries[i]
+      if (!entry || entry.length < 3) continue
 
-      const flags = entry.slice(0, 2);
-      let file = entry.slice(3);
+      const flags = entry.slice(0, 2)
+      let file = entry.slice(3)
 
       // Handle renames: "R  old\0new" - the new name follows
-      if (flags.startsWith("R") || flags.startsWith("C")) {
+      if (flags.startsWith('R') || flags.startsWith('C')) {
         // For renames/copies, the entry format is "R  old" followed by "new"
         // We want to boost the new (destination) file
-        const nextEntry = entries[i + 1];
+        const nextEntry = entries[i + 1]
         if (nextEntry && !nextEntry.match(/^[ MADRCU?!]{2} /)) {
           // Next entry is the destination filename (no status prefix)
-          file = nextEntry;
-          i++; // Skip the next entry since we consumed it
+          file = nextEntry
+          i++ // Skip the next entry since we consumed it
         }
       }
 
-      const fullPath = path.join(projectRoot, file);
+      const fullPath = path.join(projectRoot, file)
 
       // Modified/staged files get full boost (5.0), untracked slightly less (3.0)
-      const boost = flags.includes("?") ? 3.0 : 5.0;
-      boosts.set(fullPath, boost);
+      const boost = flags.includes('?') ? 3.0 : 5.0
+      boosts.set(fullPath, boost)
     }
   } catch {
     // Git not available or other error - return empty map
   }
 
-  return boosts;
+  return boosts
 }
 
 /**
@@ -152,8 +146,8 @@ export async function getGitRecency(
   projectRoot: string,
   options: GitRecencyOptions = {}
 ): Promise<Map<string, GitRecencyData>> {
-  const { since = "90 days ago", maxCommits = 1000 } = options;
-  const recencyMap = new Map<string, GitRecencyData>();
+  const { since = '90 days ago', maxCommits = 1000 } = options
+  const recencyMap = new Map<string, GitRecencyData>()
 
   try {
     // Use --format to get commit timestamp, followed by file list
@@ -163,45 +157,45 @@ export async function getGitRecency(
     const result =
       await $`git -C ${projectRoot} log --name-only --format=%at -z --since=${since} -n ${maxCommits}`
         .quiet()
-        .nothrow();
+        .nothrow()
 
     if (result.exitCode !== 0) {
-      return recencyMap;
+      return recencyMap
     }
 
-    const output = result.stdout.toString();
+    const output = result.stdout.toString()
     if (!output) {
-      return recencyMap;
+      return recencyMap
     }
 
     // Split on NUL to get all entries (timestamps and filenames mixed)
-    const entries = output.split("\0");
+    const entries = output.split('\0')
 
-    let currentTimestamp: number | null = null;
+    let currentTimestamp: number | null = null
 
     for (const entry of entries) {
       // Skip empty entries
-      const trimmed = entry.trim();
-      if (!trimmed) continue;
+      const trimmed = entry.trim()
+      if (!trimmed) continue
 
       // Check if this entry is a Unix timestamp (10 digits, all numeric)
       // Timestamps from git are in seconds, so they're 10-digit numbers
       if (/^\d{10}$/.test(trimmed)) {
-        const ts = parseInt(trimmed, 10);
+        const ts = parseInt(trimmed, 10)
         if (!isNaN(ts)) {
-          currentTimestamp = ts;
-          continue;
+          currentTimestamp = ts
+          continue
         }
       }
 
       // This is a filename - skip if we haven't seen a timestamp yet
-      if (currentTimestamp === null) continue;
+      if (currentTimestamp === null) continue
 
       // Skip entries that look like timestamps (shouldn't happen but safety check)
-      if (/^\d+$/.test(trimmed)) continue;
+      if (/^\d+$/.test(trimmed)) continue
 
-      const fullPath = path.join(projectRoot, trimmed);
-      const existing = recencyMap.get(fullPath);
+      const fullPath = path.join(projectRoot, trimmed)
+      const existing = recencyMap.get(fullPath)
 
       if (existing) {
         // Update frequency count
@@ -209,19 +203,19 @@ export async function getGitRecency(
         recencyMap.set(fullPath, {
           lastCommit: existing.lastCommit,
           frequency: existing.frequency + 1,
-        });
+        })
       } else {
         recencyMap.set(fullPath, {
           lastCommit: currentTimestamp,
           frequency: 1,
-        });
+        })
       }
     }
   } catch {
     // Git not available or other error - return empty map
   }
 
-  return recencyMap;
+  return recencyMap
 }
 
 /**
@@ -242,18 +236,18 @@ export async function getGitRecency(
  * ```
  */
 export function gitRecencyScore(lastCommitTime: number): number {
-  const now = Date.now();
+  const now = Date.now()
   // lastCommitTime is in seconds (Unix timestamp), convert to ms
-  const lastCommitMs = lastCommitTime * 1000;
-  const ageMs = now - lastCommitMs;
+  const lastCommitMs = lastCommitTime * 1000
+  const ageMs = now - lastCommitMs
 
   // Convert to days
-  const daysSince = ageMs / (1000 * 60 * 60 * 24);
+  const daysSince = ageMs / (1000 * 60 * 60 * 24)
 
   // Exponential decay with 14-day half-life
   // score = e^(-daysSince / 14)
   // At 0 days: e^0 = 1.0
   // At 14 days: e^-1 = 0.368
   // At 28 days: e^-2 = 0.135
-  return Math.exp(-daysSince / 14);
+  return Math.exp(-daysSince / 14)
 }

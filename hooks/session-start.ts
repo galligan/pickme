@@ -15,7 +15,13 @@
 import { spawn } from 'bun'
 import { join } from 'node:path'
 import { loadConfig } from '../src/config'
-import { closeDatabase, getWatchedRoots, openDatabase, updateWatchedRoot, upsertFrecency } from '../src/db'
+import {
+  closeDatabase,
+  getWatchedRoots,
+  openDatabase,
+  updateWatchedRoot,
+  upsertFrecency,
+} from '../src/db'
 import { buildFrecencyRecords } from '../src/frecency'
 import { debugLog, expandTilde, getConfigDir, getDataDir } from '../src/utils'
 
@@ -118,11 +124,7 @@ export function determineProjectRoot(ctx: HookContext): string {
  * @param configPath - Path to config file
  * @param dbPath - Path to database file
  */
-function spawnBackgroundRefresh(
-  root: string,
-  configPath: string,
-  dbPath: string
-): void {
+function spawnBackgroundRefresh(root: string, configPath: string, dbPath: string): void {
   try {
     const indexerPath = join(__dirname, '../src/indexer.ts')
 
@@ -190,9 +192,7 @@ export async function runSessionStartHook(ctx: HookContext): Promise<HookResult>
     try {
       // Get watched roots to check staleness
       const watchedRoots = getWatchedRoots(db)
-      const watchedRootsMap = new Map(
-        watchedRoots.map((wr) => [wr.root, wr])
-      )
+      const watchedRootsMap = new Map(watchedRoots.map(wr => [wr.root, wr]))
 
       // Check each configured root for staleness
       const staleRoots: string[] = []
@@ -228,7 +228,7 @@ export async function runSessionStartHook(ctx: HookContext): Promise<HookResult>
 
       // Refresh git frecency for current project (if in a configured root)
       if (result.projectRoot) {
-        const isConfiguredRoot = config.index.roots.some((r) => {
+        const isConfiguredRoot = config.index.roots.some(r => {
           const expanded = expandTilde(r)
           return result.projectRoot === expanded || result.projectRoot?.startsWith(expanded + '/')
         })
@@ -242,7 +242,7 @@ export async function runSessionStartHook(ctx: HookContext): Promise<HookResult>
 
             if (frecencyRecords.length > 0) {
               // Convert to the format expected by upsertFrecency
-              const dbRecords = frecencyRecords.map((r) => ({
+              const dbRecords = frecencyRecords.map(r => ({
                 path: r.path,
                 gitRecency: r.gitRecency,
                 gitFrequency: r.gitFrequency,
@@ -255,7 +255,9 @@ export async function runSessionStartHook(ctx: HookContext): Promise<HookResult>
             }
           } catch (err) {
             // Git frecency errors are logged but don't fail the hook
-            console.error(`[pickme] Git frecency error: ${err instanceof Error ? err.message : String(err)}`)
+            console.error(
+              `[pickme] Git frecency error: ${err instanceof Error ? err.message : String(err)}`
+            )
           }
         }
       }

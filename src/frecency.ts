@@ -64,10 +64,7 @@ export interface RankedResult extends SearchResult {
  * // score = 0.5 * 1.0 + 10 * 0.5 + 5.0 * 5.0 = 30.5
  * ```
  */
-export function calculateScore(
-  frecency: FrecencyRecord,
-  weights: WeightsConfig
-): number {
+export function calculateScore(frecency: FrecencyRecord, weights: WeightsConfig): number {
   return (
     frecency.gitRecency * weights.git_recency +
     frecency.gitFrequency * weights.git_frequency +
@@ -124,10 +121,7 @@ export async function buildFrecencyRecords(
   ])
 
   // Collect all unique file paths from both sources
-  const allPaths = new Set<string>([
-    ...recencyData.keys(),
-    ...statusBoosts.keys(),
-  ])
+  const allPaths = new Set<string>([...recencyData.keys(), ...statusBoosts.keys()])
 
   const now = Date.now()
   const records: FrecencyRecord[] = []
@@ -186,7 +180,7 @@ export function applyFrecencyRanking(
   frecencyMap: Map<string, FrecencyRecord>,
   weights: WeightsConfig
 ): RankedResult[] {
-  const ranked: RankedResult[] = results.map((result) => {
+  const ranked: RankedResult[] = results.map(result => {
     const frecency = frecencyMap.get(result.path)
 
     // Calculate frecency score (0 if not in map)
@@ -234,21 +228,18 @@ export function applyFrecencyRanking(
  * // merged includes both indexed results and fresh files
  * ```
  */
-export function mergeResults(
-  indexed: SearchResult[],
-  fresh: string[]
-): SearchResult[] {
+export function mergeResults(indexed: SearchResult[], fresh: string[]): SearchResult[] {
   if (fresh.length === 0) {
     return indexed
   }
 
   // Build a set of paths already in indexed results
-  const indexedPaths = new Set(indexed.map((r) => r.path))
+  const indexedPaths = new Set(indexed.map(r => r.path))
 
   // Create SearchResults for fresh files not already indexed
   const freshResults: SearchResult[] = fresh
-    .filter((path) => !indexedPaths.has(path))
-    .map((path) => {
+    .filter(path => !indexedPaths.has(path))
+    .map(path => {
       const filename = path.split('/').pop() ?? path
       return {
         path,

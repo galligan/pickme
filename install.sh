@@ -118,19 +118,51 @@ EOF
 }
 EOF
 
+  # Write marketplace.json
+  mkdir -p "${DATA_DIR}/.claude-plugin"
+  cat > "${DATA_DIR}/.claude-plugin/marketplace.json" << 'EOF'
+{
+  "name": "pickme-cli",
+  "owner": {
+    "name": "Matt Galligan",
+    "email": "noreply@pickme.local"
+  },
+  "plugins": [
+    {
+      "name": "pickme",
+      "source": "./plugin",
+      "description": "Ultrafast @file suggester with background index refresh",
+      "version": "VERSION_PLACEHOLDER",
+      "author": {
+        "name": "Matt Galligan",
+        "url": "https://github.com/galligan"
+      }
+    }
+  ]
+}
+EOF
+  sed -i.bak "s/VERSION_PLACEHOLDER/${version}/" "${DATA_DIR}/.claude-plugin/marketplace.json"
+  rm -f "${DATA_DIR}/.claude-plugin/marketplace.json.bak"
+
   # Write session-start.sh
   cat > "${plugin_dir}/scripts/session-start.sh" << 'EOF'
 #!/bin/bash
 # pickme SessionStart hook
-# Refreshes file indexes in the background
+# Refreshes file indexes in the background to keep @file suggestions fast
 
+# Check standard install location first
 PICKME_BIN="${HOME}/.local/bin/pickme"
 
-# Exit silently if pickme not installed
-[[ ! -x "$PICKME_BIN" ]] && exit 0
+# Fallback to PATH
+if [[ ! -x "$PICKME_BIN" ]]; then
+  PICKME_BIN="$(command -v pickme 2>/dev/null || true)"
+fi
+
+# Exit silently if pickme not found
+[[ -z "$PICKME_BIN" || ! -x "$PICKME_BIN" ]] && exit 0
 
 # Run refresh in background
-nohup "$PICKME_BIN" refresh --background >/dev/null 2>&1 &
+nohup "$PICKME_BIN" refresh >/dev/null 2>&1 &
 
 exit 0
 EOF

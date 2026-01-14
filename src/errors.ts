@@ -111,11 +111,7 @@ export class GitError extends FilePickerError {
   /**
    * Creates a GitError for command execution failures.
    */
-  static commandFailed(
-    command: string,
-    stderr: string,
-    cause?: Error
-  ): GitError {
+  static commandFailed(command: string, stderr: string, cause?: Error): GitError {
     return new GitError(`git command failed: ${command}\n${stderr}`, { cause })
   }
 
@@ -155,11 +151,9 @@ export class FTSSyntaxError extends FilePickerError {
    * Creates an FTSSyntaxError from a SQLite FTS5 error.
    */
   static fromSqliteError(err: Error, query: string): FTSSyntaxError {
-    return new FTSSyntaxError(
-      `FTS5 syntax error in query "${query}": ${err.message}`,
-      query,
-      { cause: err }
-    )
+    return new FTSSyntaxError(`FTS5 syntax error in query "${query}": ${err.message}`, query, {
+      cause: err,
+    })
   }
 }
 
@@ -182,20 +176,14 @@ export class TimeoutError extends FilePickerError {
    * Creates a TimeoutError for query operations.
    */
   static queryTimeout(timeoutMs: number): TimeoutError {
-    return new TimeoutError(
-      `Query exceeded ${timeoutMs}ms timeout`,
-      timeoutMs
-    )
+    return new TimeoutError(`Query exceeded ${timeoutMs}ms timeout`, timeoutMs)
   }
 
   /**
    * Creates a TimeoutError for indexing operations.
    */
   static indexTimeout(timeoutMs: number): TimeoutError {
-    return new TimeoutError(
-      `Indexing exceeded ${timeoutMs}ms timeout`,
-      timeoutMs
-    )
+    return new TimeoutError(`Indexing exceeded ${timeoutMs}ms timeout`, timeoutMs)
   }
 }
 
@@ -309,10 +297,7 @@ export const ErrorPatterns = {
  * }
  * ```
  */
-export function matchesErrorPattern(
-  err: unknown,
-  pattern: RegExp
-): err is Error {
+export function matchesErrorPattern(err: unknown, pattern: RegExp): err is Error {
   if (err instanceof Error) {
     return pattern.test(err.message)
   }
@@ -339,10 +324,7 @@ export function matchesErrorPattern(
  * }
  * ```
  */
-export function wrapError(
-  err: unknown,
-  context?: { query?: string }
-): Error {
+export function wrapError(err: unknown, context?: { query?: string }): Error {
   // Already a FilePickerError, return as-is
   if (isFilePickerError(err)) {
     return err

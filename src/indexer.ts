@@ -8,13 +8,9 @@
  */
 
 import { $ } from 'bun'
+import type { Database } from 'bun:sqlite'
 import type { Dirent } from 'node:fs'
-import {
-  lstat,
-  readdir,
-  realpath as fsRealpath,
-  stat,
-} from 'node:fs/promises'
+import { lstat, readdir, realpath as fsRealpath, stat } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import type { Config } from './config'
 import { getDepthForRoot } from './config'
@@ -23,6 +19,7 @@ import { expandTilde } from './utils'
 
 // Re-export types for backwards compatibility
 export type { FileMeta, WatchedRoot } from './types'
+export type { Database } from 'bun:sqlite'
 
 /**
  * Options for indexDirectory().
@@ -30,8 +27,14 @@ export type { FileMeta, WatchedRoot } from './types'
 export interface IndexOptions {
   /** Max directory depth to traverse. Default: 10 */
   maxDepth?: number
+  /** Include hidden files/directories (dotfiles). Default: false */
+  includeHidden?: boolean
+  /** Include files ignored by VCS ignore files (gitignore). Default: false */
+  includeGitignored?: boolean
   /** Glob patterns to exclude (e.g., "node_modules", ".git"). Default: [] */
   exclude?: readonly string[]
+  /** Specific directories to skip entirely (absolute paths). Default: [] */
+  disabled?: readonly string[]
   /** Only update files changed since last index. Default: false */
   incremental?: boolean
   /** Limit total files indexed. Default: unlimited */
@@ -140,18 +143,11 @@ export function resetFdCache(): void {
  * @param mtime - File modification time in milliseconds
  * @returns FileMeta object ready for database insertion
  */
-export function buildFileMeta(
-  absolutePath: string,
-  root: string,
-  mtime: number
-): FileMeta {
+export function buildFileMeta(absolutePath: string, root: string, mtime: number): FileMeta {
   return {
     path: absolutePath,
     filename: basename(absolutePath),
-    dirComponents: absolutePath
-      .split(sep)
-      .filter(Boolean)
-      .join(' '),
+    dirComponents: absolutePath.split(sep).filter(Boolean).join(' '),
     root,
     mtime,
     relativePath: relative(root, absolutePath),
@@ -165,15 +161,10 @@ export function buildFileMeta(
  * @param indexedRoots - Array of indexed root directories
  * @returns true if the path is within at least one root
  */
-export function isWithinIndexedRoots(
-  targetPath: string,
-  indexedRoots: readonly string[]
-): boolean {
-  return indexedRoots.some((root) => {
+export function isWithinIndexedRoots(targetPath: string, indexedRoots: readonly string[]): boolean {
+  return indexedRoots.some(root => {
     const expandedRoot = expandTilde(root)
-    return (
-      targetPath === expandedRoot || targetPath.startsWith(expandedRoot + sep)
-    )
+    return targetPath === expandedRoot || targetPath.startsWith(expandedRoot + sep)
   })
 }
 
@@ -207,10 +198,29 @@ async function discoverFilesWithFd(
   options: IndexOptions
 ): Promise<{ files: string[]; errors: string[] }> {
   const maxDepth = options.maxDepth ?? 10
+  const includeHidden = options.includeHidden ?? false
+  const includeGitignored = options.includeGitignored ?? false
   const excludePatterns = options.exclude ?? []
+  const disabledDirs = options.disabled ?? []
   const maxFiles = options.maxFiles
 
-  const excludeFlags = buildFdExcludeFlags(excludePatterns)
+  // Check if the root itself is disabled
+  for (const disabled of disabledDirs) {
+    if (root === disabled || root.startsWith(disabled + sep)) {
+      return { files: [], errors: [] }
+    }
+  }
+
+  // Build exclude flags including disabled directories.
+  // fd's --exclude expects patterns or relative paths, not absolute paths.
+  // Convert absolute disabled dirs to relative paths by:
+  // 1. Filter to only dirs under the current root (e.g., /home/user/node_modules under /home/user)
+  // 2. Slice off the root prefix + separator to get relative path (e.g., node_modules)
+  const relativeDisabledDirs = disabledDirs
+    .filter(dir => dir.startsWith(root + sep))
+    .map(dir => dir.slice(root.length + 1))
+  const allExcludes = [...excludePatterns, ...relativeDisabledDirs]
+  const excludeFlags = buildFdExcludeFlags(allExcludes)
 
   try {
     // Build fd command
@@ -223,6 +233,13 @@ async function discoverFilesWithFd(
       String(maxDepth),
       ...excludeFlags,
     ]
+
+    if (includeHidden) {
+      args.push('--hidden')
+    }
+    if (includeGitignored) {
+      args.push('--no-ignore-vcs')
+    }
 
     if (maxFiles !== undefined) {
       args.push('--max-results', String(maxFiles))
@@ -269,16 +286,35 @@ async function discoverFilesWithFs(
   indexedRoots: readonly string[]
 ): Promise<{ files: string[]; errors: string[] }> {
   const maxDepth = options.maxDepth ?? 10
+  const includeHidden = options.includeHidden ?? false
   const excludePatterns = options.exclude ?? []
+  const disabledDirs = options.disabled ?? []
   const maxFiles = options.maxFiles
+
+  // Check if the root itself is disabled
+  for (const disabled of disabledDirs) {
+    if (root === disabled || root.startsWith(disabled + sep)) {
+      return { files: [], errors: [] }
+    }
+  }
 
   const files: string[] = []
   const errors: string[] = []
 
+  // Check if a directory path is disabled
+  const isDisabled = (dirPath: string): boolean => {
+    for (const disabled of disabledDirs) {
+      if (dirPath === disabled || dirPath.startsWith(disabled + sep)) {
+        return true
+      }
+    }
+    return false
+  }
+
   // Convert exclude patterns to a simple check function
   // Note: This is a simplified pattern matching, not full glob support
   const shouldExclude = (name: string): boolean => {
-    return excludePatterns.some((pattern) => {
+    return excludePatterns.some(pattern => {
       // Handle simple patterns (no wildcards)
       if (!pattern.includes('*')) {
         return name === pattern
@@ -322,6 +358,10 @@ async function discoverFilesWithFs(
       // Ensure name is a string (Bun compatibility)
       const name = String(entry.name)
 
+      if (!includeHidden && name.startsWith('.')) {
+        continue
+      }
+
       // Skip excluded patterns
       if (shouldExclude(name)) {
         continue
@@ -343,12 +383,18 @@ async function discoverFilesWithFs(
           if (targetStat.isFile()) {
             files.push(resolvedPath)
           } else if (targetStat.isDirectory()) {
-            await scanDir(resolvedPath, currentDepth + 1)
+            // Skip disabled directories (including symlinked ones)
+            if (!isDisabled(resolvedPath)) {
+              await scanDir(resolvedPath, currentDepth + 1)
+            }
           }
         } else if (entry.isFile()) {
           files.push(fullPath)
         } else if (entry.isDirectory()) {
-          await scanDir(fullPath, currentDepth + 1)
+          // Skip disabled directories
+          if (!isDisabled(fullPath)) {
+            await scanDir(fullPath, currentDepth + 1)
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
@@ -547,20 +593,17 @@ export async function refreshIndex(
 
     const options: IndexOptions = {
       maxDepth: getDepthForRoot(config, expandedRoot),
+      includeHidden: config.index.include_hidden,
+      includeGitignored: !config.index.exclude.gitignored_files,
       exclude: config.index.exclude.patterns,
+      disabled: config.index.disabled,
       incremental: existingRoot?.lastIndexed !== null,
       maxFiles: config.index.limits.max_files_per_root,
       lastIndexed: existingRoot?.lastIndexed ?? null,
     }
 
     try {
-      const indexResult = await indexDirectory(
-        root,
-        options,
-        db,
-        dbOps,
-        expandedRoots
-      )
+      const indexResult = await indexDirectory(root, options, db, dbOps, expandedRoots)
 
       result.totalFilesIndexed += indexResult.filesIndexed
       result.totalFilesSkipped += indexResult.filesSkipped
@@ -575,7 +618,7 @@ export async function refreshIndex(
         fileCount:
           (existingRoot?.fileCount ?? 0) +
           indexResult.filesIndexed -
-          (options.incremental ? 0 : existingRoot?.fileCount ?? 0),
+          (options.incremental ? 0 : (existingRoot?.fileCount ?? 0)),
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -728,7 +771,7 @@ async function findRecentFilesWithFs(
   const files: string[] = []
 
   const shouldExclude = (name: string): boolean => {
-    return excludePatterns.some((pattern) => {
+    return excludePatterns.some(pattern => {
       if (!pattern.includes('*')) {
         return name === pattern
       }
@@ -863,7 +906,7 @@ if (import.meta.main) {
           upsertFiles: (d, files) => upsertFiles(d as InstanceType<typeof Database>, files),
           deleteFiles: (d, paths) => deleteFiles(d as InstanceType<typeof Database>, paths),
           updateWatchedRoot: (d, r) => updateWatchedRoot(d as InstanceType<typeof Database>, r),
-          getWatchedRoots: (d) => getWatchedRoots(d as InstanceType<typeof Database>),
+          getWatchedRoots: d => getWatchedRoots(d as InstanceType<typeof Database>),
           getFilesForRoot: () => [], // Not used by indexDirectory
         }
 
@@ -875,6 +918,7 @@ if (import.meta.main) {
           {
             maxDepth,
             exclude: config.index.exclude.patterns,
+            disabled: config.index.disabled,
           },
           db,
           dbOps,
