@@ -10,13 +10,14 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, symlinkSync, realpathSync } from 'node:fs'
 import {
   createFilePicker,
   type FilePicker,
   type FilePickerSearchOptions,
   type FilePickerSearchResult,
 } from './index'
+import { resetFdCache } from './indexer'
 
 // ============================================================================
 // Test Utilities
@@ -417,6 +418,80 @@ describe('FilePicker.refreshIndex', () => {
     expect(result).toBeDefined()
     expect(typeof result.filesIndexed).toBe('number')
     expect(typeof result.duration).toBe('number')
+  })
+})
+
+// ============================================================================
+// FilePicker.refreshIndex Symlink Scope Tests
+// ============================================================================
+
+describe('FilePicker.refreshIndex symlink scope', () => {
+  let picker: FilePicker
+  let project: { root: string; cleanup: () => void }
+  let dbCleanup: () => void
+  let dbPath: string
+  let configDir: string
+  let configPath: string
+  let originalPath: string | undefined
+
+  beforeEach(async () => {
+    const temp = createTempDbPath()
+    dbPath = temp.dbPath
+    dbCleanup = temp.cleanup
+
+    project = createTempProject()
+
+    configDir = mkdtempSync(join(tmpdir(), 'pickme-config-'))
+    configPath = join(configDir, 'pickme.toml')
+    writeFileSync(configPath, '[index]\nroots = []\n')
+
+    originalPath = process.env.PATH
+    process.env.PATH = ''
+    resetFdCache()
+
+    picker = await createFilePicker({ dbPath, configPath })
+  })
+
+  afterEach(async () => {
+    await picker.close()
+    project.cleanup()
+    dbCleanup()
+    process.env.PATH = originalPath
+    resetFdCache()
+    try {
+      rmSync(configDir, { recursive: true })
+    } catch {
+      // Ignore cleanup errors
+    }
+  })
+
+  test('indexes symlink targets when root is not in config', async () => {
+    if (process.platform === 'win32') {
+      return
+    }
+
+    const root = realpathSync(project.root)
+
+    const targetDir = join(root, 'node_modules')
+    mkdirSync(targetDir, { recursive: true })
+
+    const targetFile = join(targetDir, 'linked-target.ts')
+    writeFileSync(targetFile, 'export const linked = true')
+
+    const linkPath = join(root, 'linked-target.ts')
+    try {
+      symlinkSync(targetFile, linkPath)
+    } catch (err) {
+      if (process.platform === 'win32') {
+        return
+      }
+      throw err
+    }
+
+    await picker.refreshIndex(root)
+
+    const results = await picker.search('linked-target')
+    expect(results.some(r => r.filename === 'linked-target.ts')).toBe(true)
   })
 })
 

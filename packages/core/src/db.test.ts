@@ -104,23 +104,30 @@ describe('escapeFTSQuery', () => {
     expect(escapeFTSQuery('src/lib/utils')).toBe('"src" "lib" "utils"')
   })
 
-  test('removes special FTS5 characters', () => {
-    // Quotes
-    expect(escapeFTSQuery('foo"bar')).toBe('"foobar"')
-    // Parentheses
-    expect(escapeFTSQuery('foo(bar)')).toBe('"foobar"')
-    // Asterisk
+  test('handles special FTS5 characters as separators', () => {
+    // Special characters are treated as token separators for better matching
+    // Quotes separate tokens
+    expect(escapeFTSQuery('foo"bar')).toBe('"foo" "bar"')
+    // Parentheses separate tokens
+    expect(escapeFTSQuery('foo(bar)')).toBe('"foo" "bar"')
+    // Asterisk stripped (alone becomes empty)
     expect(escapeFTSQuery('foo*')).toBe('"foo"')
-    // Colon
-    expect(escapeFTSQuery('foo:bar')).toBe('"foobar"')
-    // Plus/minus
-    expect(escapeFTSQuery('foo+bar-baz')).toBe('"foobarbaz"')
+    // Colon separates tokens
+    expect(escapeFTSQuery('foo:bar')).toBe('"foo" "bar"')
+    // Plus/minus separate tokens
+    expect(escapeFTSQuery('foo+bar-baz')).toBe('"foo" "bar" "baz"')
   })
 
   test('handles dots in filenames', () => {
-    // Dots are not special in FTS5, so they're preserved
-    expect(escapeFTSQuery('file.ts')).toBe('"file.ts"')
-    expect(escapeFTSQuery('index.test.ts')).toBe('"index.test.ts"')
+    // Dots are token separators to match FTS5 tokenization
+    expect(escapeFTSQuery('file.ts')).toBe('"file" "ts"')
+    expect(escapeFTSQuery('index.test.ts')).toBe('"index" "test" "ts"')
+  })
+
+  test('handles hyphenated filenames', () => {
+    // Hyphens split tokens to match FTS5 tokenization of filenames like my-component.tsx
+    expect(escapeFTSQuery('my-component.tsx')).toBe('"my" "component" "tsx"')
+    expect(escapeFTSQuery('use-auth-hook')).toBe('"use" "auth" "hook"')
   })
 
   test('trims whitespace', () => {

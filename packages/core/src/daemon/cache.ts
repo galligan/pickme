@@ -105,8 +105,10 @@ export class TTLCache {
    * @param results - Search results to cache
    */
   set(key: string, results: DaemonSearchResult[]): void {
-    // Evict oldest if at capacity
-    if (this.entries.size >= this.maxEntries && !this.entries.has(key)) {
+    // Refresh key order for true LRU behavior
+    if (this.entries.has(key)) {
+      this.entries.delete(key)
+    } else if (this.entries.size >= this.maxEntries) {
       const oldestKey = this.entries.keys().next().value
       if (oldestKey) {
         this.entries.delete(oldestKey)

@@ -543,8 +543,10 @@ class FilePickerImpl implements FilePicker {
         lastIndexed: force ? null : (existing?.lastIndexed ?? null),
       }
 
-      // Get all configured roots for symlink checking
-      const allRoots = this.config.index.roots.map(expandTilde)
+      // Get all configured roots for symlink checking, plus the requested root
+      const allRoots = Array.from(
+        new Set([...this.config.index.roots.map(expandTilde), expandedRoot])
+      )
 
       const indexResult = await indexDirectory(root, indexOptions, this.db, this.dbOps, allRoots)
 
