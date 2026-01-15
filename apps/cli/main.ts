@@ -1,7 +1,7 @@
 import { parseGlobalFlags, EXIT_ERROR, EXIT_SUCCESS, EXIT_USAGE, error } from './core'
 import { showHelp } from './help'
 import { cmdSearch } from './commands/search'
-import { cmdIndex, cmdRefresh } from './commands/index'
+import { cmdIndex } from './commands/index'
 import { cmdStatus } from './commands/status'
 import { cmdRoots } from './commands/roots'
 import { cmdConfig, cmdSetActive, cmdToggle } from './commands/config'
@@ -13,8 +13,8 @@ import { cmdServe } from './commands/serve'
 import { cmdQuery } from './commands/query'
 import { cmdDaemonStatus } from './commands/daemon-status'
 import { NAME } from './constants'
-import { getConfigPath } from '../config'
-import { VERSION } from '../version'
+import { getConfigPath } from '../../packages/core/src/config'
+import { VERSION } from '../../packages/core/src/version'
 
 export async function main(): Promise<number> {
   const { flags, rest } = parseGlobalFlags(process.argv.slice(2))
@@ -48,8 +48,6 @@ export async function main(): Promise<number> {
         return await cmdQuery(args, flags)
       case 'index':
         return await cmdIndex(args, flags, getConfigPath)
-      case 'refresh':
-        return await cmdRefresh(args, flags, getConfigPath)
       case 'status':
         return await cmdStatus(flags, getConfigPath)
       case 'roots':
@@ -67,7 +65,7 @@ export async function main(): Promise<number> {
       case 'bench':
         return await cmdBench(args, flags)
       case 'init':
-        return await cmdInit(flags)
+        return await cmdInit(args, flags)
       case 'update':
         return await cmdUpdate(args, flags)
       case 'serve':

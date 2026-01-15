@@ -61,6 +61,12 @@ export interface InitResult {
 
 export interface RunInitOptions {
   debug?: boolean
+  /** Pre-selected scope (skips interactive prompt) */
+  scope?: InstallScope
+  /** Install plugin (skips interactive prompt) */
+  plugin?: boolean
+  /** Include hidden files (skips interactive prompt) */
+  includeHidden?: boolean
 }
 
 // ============================================================================
@@ -589,8 +595,8 @@ fi
 # Exit silently if pickme not found
 [[ -z "$PICKME_BIN" || ! -x "$PICKME_BIN" ]] && exit 0
 
-# Run refresh in background
-nohup "$PICKME_BIN" refresh >/dev/null 2>&1 &
+# Run index in background
+nohup "$PICKME_BIN" index >/dev/null 2>&1 &
 
 exit 0
 `
@@ -624,7 +630,7 @@ const AGENT_FILES: Record<string, string> = {
   'commands/help.md':
     '---\ndescription: Investigate why a file is missing from pickme results\nargument-hint: <file-path>\nallowed-tools: Read, Bash(pickme *), Bash(git *)\n---\n\n# Pickme Diagnostics\n\n## Target File\nPath: $1\n\nIf no path was provided, ask the user for the full path and retry.\n\n## Investigation\n\n### 1. File Exists?\n!`ls -la "$1" 2>&1`\n\n### 2. Current Index State\n!`pickme status 2>&1`\n\n### 3. Check If Indexed\n!`pickme search --exact "$1" 2>&1 || echo "Not found in index"`\n\n### 4. Check Exclusions\n!`pickme config --show | grep -A8 exclude 2>&1`\n\n### 5. Check Gitignore\n!`git check-ignore -v "$1" 2>&1 || echo "Not gitignored"`\n\n### 6. Check Root Coverage\n!`pickme roots 2>&1`\n\n## Analysis\n\nBased on the investigation above, determine why the file is missing.\n\nCommon causes:\n- File is gitignored and include_gitignored is false\n- File is in an excluded directory pattern\n- File is outside all configured roots\n- Max depth exceeded\n- Index needs refresh\n\nProvide specific fix suggestions. If a config change is needed, offer to run /pickme:config.\n',
   'commands/status.md':
-    '---\ndescription: Show pickme index health, root coverage, and freshness\nallowed-tools: Bash(pickme *)\n---\n\n# Pickme Status\n\n## Index Health\n!`pickme status 2>&1`\n\n## Root Coverage\n!`pickme roots 2>&1`\n\n## Summary\n\nProvide a quick assessment:\n- Healthy: active is yes, database exists, indexed roots have recent timestamps\n- Stale: last indexed looks old; suggest `pickme refresh`\n- Incomplete: missing roots or disabled entries\n- Disabled: active is no (suggest `pickme enable`)\n- Error: configuration issues (suggest /pickme:help)\n',
+    '---\ndescription: Show pickme index health, root coverage, and freshness\nallowed-tools: Bash(pickme *)\n---\n\n# Pickme Status\n\n## Index Health\n!`pickme status 2>&1`\n\n## Root Coverage\n!`pickme roots 2>&1`\n\n## Summary\n\nProvide a quick assessment:\n- Healthy: active is yes, database exists, indexed roots have recent timestamps\n- Stale: last indexed looks old; suggest `pickme index`\n- Incomplete: missing roots or disabled entries\n- Disabled: active is no (suggest `pickme enable`)\n- Error: configuration issues (suggest /pickme:help)\n',
   'commands/toggle.md':
     '---\ndescription: Toggle pickme enabled state (global)\nallowed-tools: Bash(pickme *)\n---\n\n# Toggle Pickme\n\n## Current State\n!`pickme status 2>&1`\n\n## Action\n!`pickme toggle 2>&1`\n\n## New State\n!`pickme status 2>&1`\n\n## Summary\n\nReport the previous state, new state, and config path if available.\n',
   'commands/disable.md':
@@ -632,7 +638,7 @@ const AGENT_FILES: Record<string, string> = {
   'skills/pickme/configuration/SKILL.md':
     '---\nname: pickme-configuration\ndescription: Guides pickme configuration with recipes for common tasks like excluding directories, adding namespaces, adjusting depth, and toggling gitignore handling. Use when editing pickme config, troubleshooting indexing, or when pickme, config, exclude, roots, or namespace are mentioned.\nallowed-tools: Read, Edit, Bash(pickme *)\n---\n\n# Pickme Configuration Skill\n\nTeach Claude how to edit pickme configuration effectively with minimal diffs.\n\n## Config File Format\n\nPickme uses TOML. Use `pickme config --path` to find the active config file.\n\nExample:\n\n```toml\nactive = true\n\n[[roots]]\npath = "~/projects"\nnamespace = "proj"\n# disabled = true\n\n[[excludes]]\npattern = "node_modules"\n\n[index]\nmax_depth = 10\ninclude_gitignored = false\n\n[index.depth]\n"/Users/you/projects" = 5\n\n[index.exclude]\n# patterns = ["vendor"]\n# gitignored_files = false\n```\n\nNotes:\n- `[[excludes]]` is additive to defaults\n- `index.exclude.patterns` overrides defaults and excludes when set\n- `index.include_gitignored` is an alias for `index.exclude.gitignored_files`\n- Use `[[roots]]` with `disabled = true` or `index.disabled = ["/path"]` to disable a root\n\n## Common Recipes\n\n### Exclude a Directory\n\n```toml\n[[excludes]]\npattern = "dist"\n```\n\n### Add a Namespace\n\n```toml\n[[roots]]\npath = "/path/to/code"\nnamespace = "myns"\n```\n\n### Adjust Max Depth\n\n```toml\n[index]\nmax_depth = 5\n\n[index.depth]\n"/path/to/code" = 3\n```\n\n### Include Gitignored Files\n\n```toml\n[index]\ninclude_gitignored = true\n```\n\n### Disable Pickme Globally\n\n```toml\nactive = false\n```\n\n## Edit Principles\n\n1. Minimal diffs: only change what is needed\n2. Preserve comments and ordering when possible\n3. Validate after edit: run `pickme config --validate`\n4. Show before and after, then ask for confirmation\n\n## Validation\n\nAfter any config edit:\n\n```bash\npickme config --validate\npickme status\n```\n\n## Troubleshooting Config\n\n| Symptom | Check | Fix |\n| --- | --- | --- |\n| Files missing | `pickme roots` | Add or enable root |\n| Too many results | Check excludes | Add patterns |\n| Slow indexing | Check depth | Reduce max_depth |\n| Gitignored files missing | Check include_gitignored | Set to true |\n',
   'skills/pickme/diagnostics/SKILL.md':
-    '---\nname: pickme-diagnostics\ndescription: Troubleshoots pickme indexing issues including missing files, stale indexes, gitignore conflicts, and root coverage. Use when files are missing from pickme, index seems stale, or when debugging, troubleshooting, or investigating pickme behavior.\nallowed-tools: Read, Bash(pickme *), Bash(git *), Bash(find:*), Bash(ls:*)\n---\n\n# Pickme Diagnostics Skill\n\nSystematic troubleshooting for pickme indexing issues.\n\n## Decision Tree\n\n```\nFile missing from pickme?\n|-- Does file exist?\n|   |-- No -> File path issue, not pickme\n|-- Is file gitignored?\n|   |-- Yes -> Check include_gitignored setting\n|-- Is file in a configured root?\n|   |-- No -> Add root or adjust paths\n|-- Is file excluded by pattern?\n|   |-- Yes -> Remove or adjust exclude pattern\n|-- Is root disabled?\n|   |-- Yes -> Enable root\n|-- Is index stale?\n|   |-- Yes -> Run pickme refresh\n```\n\n## Diagnostic Commands\n\n### Quick Status\n```bash\npickme status\npickme roots\npickme config --show\n```\n\n### Check Specific File\n```bash\n# Is it indexed?\npickme search --exact "path/to/file"\n\n# Is it gitignored?\ngit check-ignore -v "path/to/file"\n\n# Is it in a root?\npickme roots | grep "$(dirname path/to/file)"\n```\n\n## Common Issues and Fixes\n\n### File Not Found in Index\n\nDiagnosis steps:\n1. Verify file exists: `ls -la path/to/file`\n2. Check gitignore: `git check-ignore -v path/to/file`\n3. Check roots: `pickme roots`\n4. Check excludes: `pickme config --show | grep -A10 exclude`\n\nCommon fixes:\n- Enable gitignored files: set `include_gitignored = true`\n- Add parent as root: add a `[[roots]]` entry\n- Remove overly broad exclude pattern\n\n### Stale Index\n\nSymptoms:\n- Deleted files still appearing\n- New files not showing\n- Mismatch between filesystem and results\n\nFix:\n```bash\npickme refresh\n# or re-index a root\npickme index /path/to/root\n```\n\n### Too Many Results\n\nSymptoms:\n- Search returns noise\n- Unrelated files appearing\n- Slow search performance\n\nFixes:\n- Add exclude patterns for generated files\n- Reduce max_depth\n- Use more specific roots\n\n## Resolution Flow\n\n1. Identify symptom (missing file, stale data, noise)\n2. Run diagnostics (2-3 commands max)\n3. Determine cause (use decision tree)\n4. Apply fix (config edit or command)\n5. Verify resolution (`pickme search` to confirm)\n\nTarget: Resolve in 2 steps after diagnosis.\n',
+    '---\nname: pickme-diagnostics\ndescription: Troubleshoots pickme indexing issues including missing files, stale indexes, gitignore conflicts, and root coverage. Use when files are missing from pickme, index seems stale, or when debugging, troubleshooting, or investigating pickme behavior.\nallowed-tools: Read, Bash(pickme *), Bash(git *), Bash(find:*), Bash(ls:*)\n---\n\n# Pickme Diagnostics Skill\n\nSystematic troubleshooting for pickme indexing issues.\n\n## Decision Tree\n\n```\nFile missing from pickme?\n|-- Does file exist?\n|   |-- No -> File path issue, not pickme\n|-- Is file gitignored?\n|   |-- Yes -> Check include_gitignored setting\n|-- Is file in a configured root?\n|   |-- No -> Add root or adjust paths\n|-- Is file excluded by pattern?\n|   |-- Yes -> Remove or adjust exclude pattern\n|-- Is root disabled?\n|   |-- Yes -> Enable root\n|-- Is index stale?\n|   |-- Yes -> Run pickme index\n```\n\n## Diagnostic Commands\n\n### Quick Status\n```bash\npickme status\npickme roots\npickme config --show\n```\n\n### Check Specific File\n```bash\n# Is it indexed?\npickme search --exact "path/to/file"\n\n# Is it gitignored?\ngit check-ignore -v "path/to/file"\n\n# Is it in a root?\npickme roots | grep "$(dirname path/to/file)"\n```\n\n## Common Issues and Fixes\n\n### File Not Found in Index\n\nDiagnosis steps:\n1. Verify file exists: `ls -la path/to/file`\n2. Check gitignore: `git check-ignore -v path/to/file`\n3. Check roots: `pickme roots`\n4. Check excludes: `pickme config --show | grep -A10 exclude`\n\nCommon fixes:\n- Enable gitignored files: set `include_gitignored = true`\n- Add parent as root: add a `[[roots]]` entry\n- Remove overly broad exclude pattern\n\n### Stale Index\n\nSymptoms:\n- Deleted files still appearing\n- New files not showing\n- Mismatch between filesystem and results\n\nFix:\n```bash\npickme index\n# or re-index a specific root\npickme index /path/to/root\n```\n\n### Too Many Results\n\nSymptoms:\n- Search returns noise\n- Unrelated files appearing\n- Slow search performance\n\nFixes:\n- Add exclude patterns for generated files\n- Reduce max_depth\n- Use more specific roots\n\n## Resolution Flow\n\n1. Identify symptom (missing file, stale data, noise)\n2. Run diagnostics (2-3 commands max)\n3. Determine cause (use decision tree)\n4. Apply fix (config edit or command)\n5. Verify resolution (`pickme search` to confirm)\n\nTarget: Resolve in 2 steps after diagnosis.\n',
 }
 
 function writeFileIfChanged(filePath: string, content: string, mode?: number): void {
@@ -892,9 +898,10 @@ const selectTheme = {
   prefix: { idle: green('?'), done: green('✔') },
   icon: { cursor: cyan('\u276F') }, // ❯ in cyan/teal
   style: {
+    message: (text: string) => text, // Override Inquirer's default bold
     disabled: (text: string) => dim(text),
     highlight: (text: string) => text, // No special highlighting, pointer indicates selection
-    help: (text: string) => dim(text + ' • q quit'), // Dim hints + quit
+    help: (text: string) => dim('  ' + text + ' • q quit'), // Dim hints + quit
   },
 }
 
@@ -978,7 +985,13 @@ export async function runInit(
   projectDir: string = process.cwd(),
   options: RunInitOptions = {}
 ): Promise<InitResult> {
-  const { debug = false } = options
+  const {
+    debug = false,
+    scope: preSelectedScope,
+    plugin: preSelectedPlugin,
+    includeHidden: preSelectedHidden,
+  } = options
+  const isNonInteractive = preSelectedScope !== undefined
   const result: InitResult = {
     success: true,
     globalInstalled: false,
@@ -986,10 +999,12 @@ export async function runInit(
     errors: [],
   }
 
-  // Header
-  console.log()
-  console.log(bold('Install Pickme'))
-  console.log(dim('An ultrafast @file suggester for Claude'))
+  // Header (skip in non-interactive mode for cleaner output)
+  if (!isNonInteractive) {
+    console.log()
+    console.log(bold('Install Pickme'))
+    console.log(dim('An ultrafast @file suggester for Claude'))
+  }
 
   // Silent detection phase
   const globalStatus = detectClaudeConfig('global', projectDir)
@@ -1009,12 +1024,14 @@ export async function runInit(
     (globalStatus.hookScriptExists && !globalFullyInstalled) ||
     (projectStatus.hookScriptExists && !projectFullyInstalled)
 
-  if (hasExistingScript) {
+  if (!isNonInteractive && hasExistingScript) {
     console.log()
-    console.log(yellow('Existing file-suggestion.sh will be preserved as file-suggestion.sh.bak'))
+    console.log(yellow('Existing .claude/file-suggestion.sh will be backed up automatically.'))
   }
 
-  console.log()
+  if (!isNonInteractive) {
+    console.log()
+  }
 
   // Check if all options are fully installed
   if (globalFullyInstalled && projectFullyInstalled) {
@@ -1022,62 +1039,80 @@ export async function runInit(
     return result
   }
 
-  // Build choices with styled names
-  // Note: "Project " has trailing space to align parentheses with "Globally"
-  type Choice = {
-    name: string
-    value: InstallScope
-    disabled: boolean | string
+  let selectedScope: InstallScope
+
+  // Non-interactive mode: use pre-selected scope
+  if (isNonInteractive) {
+    selectedScope = preSelectedScope
+    // Check if already installed at requested scope
+    const alreadyInstalled =
+      selectedScope === 'global' ? globalFullyInstalled : projectFullyInstalled
+    if (alreadyInstalled) {
+      console.log(
+        `Pickme is already installed ${selectedScope === 'global' ? 'globally' : 'for this project'}.\n`
+      )
+      return result
+    }
+  } else {
+    // Interactive mode: prompt for scope selection
+    // Build choices with styled names
+    type Choice = {
+      name: string
+      value: InstallScope
+      disabled: boolean | string
+    }
+
+    const choices: Choice[] = [
+      {
+        name: buildChoiceName('Globally (best)', '~/.claude', globalFullyInstalled),
+        value: 'global',
+        disabled: globalFullyInstalled,
+      },
+      {
+        name: buildChoiceName('Project', './.claude', projectFullyInstalled),
+        value: 'project',
+        disabled: projectFullyInstalled,
+      },
+    ]
+
+    // Check if all options are disabled
+    const allDisabled = choices.every(c => c.disabled !== false)
+    if (allDisabled) {
+      console.log('Pickme is already installed in all locations.\n')
+      return result
+    }
+
+    // Prompt for scope selection
+    const scopeChoice = await selectWithQuit<InstallScope>({
+      message: 'Install location:',
+      choices,
+    })
+
+    if (scopeChoice === null) {
+      console.log('\nInstallation cancelled.\n')
+      result.success = false
+      return result
+    }
+
+    selectedScope = scopeChoice
+    console.log()
   }
 
-  const choices: Choice[] = [
-    {
-      name: buildChoiceName('Globally (best)', '~/.claude', globalFullyInstalled),
-      value: 'global',
-      disabled: globalFullyInstalled,
-    },
-    {
-      name: buildChoiceName('Project', './.claude', projectFullyInstalled),
-      value: 'project',
-      disabled: projectFullyInstalled,
-    },
-  ]
-
-  // Check if all options are disabled
-  const allDisabled = choices.every(c => c.disabled !== false)
-  if (allDisabled) {
-    console.log('Pickme is already installed in all locations.\n')
-    return result
-  }
-
-  // Prompt for scope selection
-  const selectedScope = await selectWithQuit<InstallScope>({
-    message: 'Install location:',
-    choices,
-  })
-
-  if (selectedScope === null) {
-    console.log('\nInstallation cancelled.\n')
-    result.success = false
-    return result
-  }
-
-  console.log()
-
-  // Check if we need override confirmation
+  // Check if we need override confirmation (only in interactive mode)
   const needsOverride =
     (selectedScope === 'global' && globalScriptOnly) ||
     (selectedScope === 'project' && projectScriptOnly)
 
-  if (needsOverride) {
+  // Override confirmation only in interactive mode
+  if (!isNonInteractive && needsOverride) {
     const status = selectedScope === 'global' ? globalStatus : projectStatus
     const displayPath = status.hookScriptPath.replace(homedir(), '~')
 
     const confirmed = await selectWithQuit<boolean>({
-      message: `Ok to override ${displayPath}?`,
+      message: `Ok to override ${displayPath}?\n  ${dim('Current file will be saved as file-suggestion.sh.bak')}`,
       choices: [
         {
-          name: `Yes\n  ${dim('Current file will be saved as file-suggestion.sh.bak')}`,
+          name: 'Yes',
           value: true,
           disabled: false,
         },
@@ -1098,54 +1133,66 @@ export async function runInit(
     console.log()
   }
 
-  // Ask about plugin installation
-  const installPluginChoice = await selectWithQuit<boolean>({
-    message: `Install Claude Code plugin for full capability?\n  ${dim('Adds SessionStart hook for background index refresh')}`,
-    choices: [
-      {
-        name: `Yes ${dim('(recommended)')}`,
-        value: true,
-        disabled: false,
-      },
-      {
-        name: `No ${dim('(refresh manually with pickme refresh)')}`,
-        value: false,
-        disabled: false,
-      },
-    ],
-  })
+  let installPluginChoice: boolean
+  let includeHiddenChoice: boolean
 
-  if (installPluginChoice === null) {
-    console.log('\nInstallation cancelled.\n')
-    result.success = false
-    return result
+  if (isNonInteractive) {
+    // Non-interactive: use defaults or pre-selected values
+    installPluginChoice = preSelectedPlugin ?? true
+    includeHiddenChoice = preSelectedHidden ?? false
+  } else {
+    // Interactive: prompt for plugin installation
+    const pluginAnswer = await selectWithQuit<boolean>({
+      message: `Install Claude Code plugin for full capability?\n  ${dim('Adds SessionStart hook for background index refresh')}`,
+      choices: [
+        {
+          name: `Yes ${dim('(recommended)')}`,
+          value: true,
+          disabled: false,
+        },
+        {
+          name: `No ${dim('(index manually with pickme index)')}`,
+          value: false,
+          disabled: false,
+        },
+      ],
+    })
+
+    if (pluginAnswer === null) {
+      console.log('\nInstallation cancelled.\n')
+      result.success = false
+      return result
+    }
+
+    installPluginChoice = pluginAnswer
+    console.log()
+
+    // Interactive: prompt for hidden files
+    const hiddenAnswer = await selectWithQuit<boolean>({
+      message: `Include hidden files/folders in search?\n  ${dim('Enables @.claude/ and other dot-directories')}`,
+      choices: [
+        {
+          name: `Yes ${dim('(index dotfiles)')}`,
+          value: true,
+          disabled: false,
+        },
+        {
+          name: `No ${dim('(default)')}`,
+          value: false,
+          disabled: false,
+        },
+      ],
+    })
+
+    if (hiddenAnswer === null) {
+      console.log('\nInstallation cancelled.\n')
+      result.success = false
+      return result
+    }
+
+    includeHiddenChoice = hiddenAnswer
+    console.log()
   }
-
-  console.log()
-
-  const includeHiddenChoice = await selectWithQuit<boolean>({
-    message: `Include hidden files/folders in search?\n  ${dim('Enables @.claude/ and other dot-directories')}`,
-    choices: [
-      {
-        name: `Yes ${dim('(index dotfiles)')}`,
-        value: true,
-        disabled: false,
-      },
-      {
-        name: `No ${dim('(default)')}`,
-        value: false,
-        disabled: false,
-      },
-    ],
-  })
-
-  if (includeHiddenChoice === null) {
-    console.log('\nInstallation cancelled.\n')
-    result.success = false
-    return result
-  }
-
-  console.log()
 
   // Install in selected scope with spinner
   const scopeLabel = selectedScope === 'global' ? 'Global' : 'Project'

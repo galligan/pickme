@@ -14,16 +14,16 @@
 
 import { spawn } from 'bun'
 import { join } from 'node:path'
-import { loadConfig } from '../src/config'
+import { loadConfig } from '../packages/core/src/config'
 import {
   closeDatabase,
   getWatchedRoots,
   openDatabase,
   updateWatchedRoot,
   upsertFrecency,
-} from '../src/db'
-import { buildFrecencyRecords } from '../src/frecency'
-import { debugLog, expandTilde, getConfigDir, getDataDir } from '../src/utils'
+} from '../packages/core/src/db'
+import { buildFrecencyRecords } from '../packages/core/src/frecency'
+import { debugLog, expandTilde, getConfigDir, getDataDir } from '../packages/core/src/utils'
 
 // ============================================================================
 // Constants

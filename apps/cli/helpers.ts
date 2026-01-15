@@ -8,8 +8,8 @@ import {
   statSync,
 } from 'node:fs'
 import { dirname, resolve, join } from 'node:path'
-import { expandTilde, getDataDir } from '../utils'
-import { getClaudeConfigDir } from '../init'
+import { expandTilde, getDataDir } from '../../packages/core/src/utils'
+import { getClaudeConfigDir } from '../../packages/core/src/init'
 
 export function shellEscape(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`

@@ -1,6 +1,6 @@
 import ora from 'ora'
-import { checkForUpdate, performUpdate } from '../../update'
-import { VERSION } from '../../version'
+import { checkForUpdate, performUpdate } from '../../../packages/core/src/update'
+import { VERSION } from '../../../packages/core/src/version'
 import { error, info, output, EXIT_ERROR, EXIT_SUCCESS, type OutputOptions } from '../core'
 import { NAME } from '../constants'
 

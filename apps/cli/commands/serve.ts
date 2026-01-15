@@ -7,12 +7,16 @@
  */
 
 import { parseArgs } from 'node:util'
-import { getConfigPath } from '../../config'
-import { createInitialState, type DaemonState, handleRequest } from '../../daemon/handlers'
-import { createLifecycle, type LifecycleManager } from '../../daemon/lifecycle'
-import { createServer } from '../../daemon/server'
-import { getSocketPath } from '../../daemon/socket-path'
-import { createFilePicker, type FilePicker } from '../../index'
+import { getConfigPath } from '../../../packages/core/src/config'
+import {
+  createInitialState,
+  type DaemonState,
+  handleRequest,
+} from '../../../packages/core/src/daemon/handlers'
+import { createLifecycle, type LifecycleManager } from '../../../packages/core/src/daemon/lifecycle'
+import { createServer } from '../../../packages/core/src/daemon/server'
+import { getSocketPath } from '../../../packages/core/src/daemon/socket-path'
+import { createFilePicker, type FilePicker } from '../../../packages/core/src/index'
 import { EXIT_SUCCESS, error, info, type OutputOptions } from '../core'
 
 // ============================================================================
@@ -190,9 +194,8 @@ export async function cmdServe(args: readonly string[], flags: OutputOptions): P
   info(`  Socket: ${socketPath}`, flags)
   info(`  Idle timeout: ${serveArgs.idle} minutes`, flags)
 
-  // Keep the process alive until lifecycle manager triggers shutdown
-  // The lifecycle manager will call process.exit(0) on shutdown
-  process.stdin.resume()
+  // Block forever - lifecycle manager will call process.exit(0) on shutdown
+  await new Promise(() => {})
 
   // This line is never reached, but satisfies TypeScript
   return EXIT_SUCCESS

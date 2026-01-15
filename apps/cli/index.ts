@@ -1,4 +1,4 @@
 #!/usr/bin/env bun
-import { main } from './src/cli/main'
+import { main } from './main'
 
 main().then(code => process.exit(code))

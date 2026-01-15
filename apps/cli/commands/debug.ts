@@ -14,7 +14,7 @@ import {
 } from '../helpers'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { expandTilde } from '../../utils'
+import { expandTilde } from '../../../packages/core/src/utils'
 
 export async function cmdDebug(args: string[], opts: OutputOptions): Promise<number> {
   const action = args[0]?.toLowerCase() ?? 'status'

@@ -1,4 +1,4 @@
-import { loadConfig } from '../../config'
+import { loadConfig } from '../../../packages/core/src/config'
 import { output, EXIT_SUCCESS, type OutputOptions } from '../core'
 import { getEffectiveConfigPath } from '../helpers'
 

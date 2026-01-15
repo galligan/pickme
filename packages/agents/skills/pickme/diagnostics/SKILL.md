@@ -23,7 +23,7 @@ File missing from pickme?
 |-- Is root disabled?
 |   |-- Yes -> Enable root
 |-- Is index stale?
-|   |-- Yes -> Run pickme refresh
+|   |-- Yes -> Run pickme index
 ```
 
 ## Diagnostic Commands
@@ -77,8 +77,8 @@ Symptoms:
 Fix:
 
 ```bash
-pickme refresh
-# or re-index a root
+pickme index
+# or re-index a specific root
 pickme index /path/to/root
 ```
 
