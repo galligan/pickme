@@ -120,7 +120,7 @@ const TRIGGER_STATEMENTS = [
 // ============================================================================
 
 /**
- * Special characters that need escaping in FTS5 queries.
+ * Special characters that need normalization in FTS5 queries.
  *
  * FTS5 uses these characters for special syntax:
  * - Quotes (", ') for phrase queries
@@ -132,51 +132,123 @@ const TRIGGER_STATEMENTS = [
  * - Pipe for OR
  * - Backslash is the escape character itself
  */
-const FTS5_SPECIAL_CHARS = /["\(\)\*\^\:\+\-\|\\/]/g
+const FTS5_SPECIAL_CHARS = /["'\(\)\*\^\:\+\-\|\\/]/g
+
+/**
+ * Token separators used for FTS5 query normalization.
+ *
+ * Includes whitespace, path separators, and common filename delimiters.
+ */
+const FTS5_TOKEN_SEPARATORS = /[\s\/\\._-]+/g
+
+interface QueryPart {
+  readonly text: string
+  readonly quoted: boolean
+}
+
+function splitQueryParts(query: string): QueryPart[] {
+  const parts: QueryPart[] = []
+  let buffer = ''
+  let inQuote = false
+  let quoteChar: '"' | "'" | '' = ''
+
+  const flush = (quoted: boolean): void => {
+    const value = buffer.trim()
+    if (value) {
+      parts.push({ text: value, quoted })
+    }
+    buffer = ''
+  }
+
+  for (const ch of query) {
+    if (ch === '"' || ch === "'") {
+      if (inQuote) {
+        if (ch === quoteChar) {
+          flush(true)
+          inQuote = false
+          quoteChar = ''
+        } else {
+          buffer += ch
+        }
+      } else {
+        flush(false)
+        inQuote = true
+        quoteChar = ch
+      }
+      continue
+    }
+
+    if (!inQuote && /\s/.test(ch)) {
+      flush(false)
+      continue
+    }
+
+    buffer += ch
+  }
+
+  if (buffer.trim()) {
+    parts.push({ text: buffer.trim(), quoted: inQuote })
+  }
+
+  return parts
+}
+
+function normalizeTokens(value: string): string[] {
+  const normalized = value.replace(FTS5_SPECIAL_CHARS, ' ')
+  return normalized.split(FTS5_TOKEN_SEPARATORS).filter(Boolean)
+}
+
+function buildEscapedTokens(query: string): { tokens: string[]; lastIsPhrase: boolean } {
+  const trimmed = query.trim()
+  if (!trimmed) {
+    return { tokens: [], lastIsPhrase: false }
+  }
+
+  const parts = splitQueryParts(trimmed)
+  const tokens: string[] = []
+  let lastIsPhrase = false
+
+  for (const part of parts) {
+    const partTokens = normalizeTokens(part.text)
+    if (partTokens.length === 0) {
+      continue
+    }
+
+    if (part.quoted) {
+      const phrase = partTokens.map(token => token.replace(/"/g, '""')).join(' ')
+      tokens.push(`"${phrase}"`)
+      lastIsPhrase = true
+      continue
+    }
+
+    for (const token of partTokens) {
+      const escaped = token.replace(/"/g, '""')
+      tokens.push(`"${escaped}"`)
+      lastIsPhrase = false
+    }
+  }
+
+  return { tokens, lastIsPhrase }
+}
 
 /**
  * Escapes special FTS5 characters in a query string.
  *
  * Wraps each token in double quotes to treat them as literals,
- * escaping any embedded quotes.
+ * preserving quoted phrases and splitting on common filename delimiters.
  *
  * @param query - Raw user query
  * @returns Escaped query safe for FTS5 MATCH
  *
  * @example
  * ```ts
- * escapeFTSQuery('src/comp')  // '"src" "comp"'
- * escapeFTSQuery('file.ts')   // '"file" "ts"'
- * escapeFTSQuery('foo"bar')   // '"foo""bar"'
+ * escapeFTSQuery('src/comp') // '"src" "comp"'
+ * escapeFTSQuery('my-component.tsx') // '"my" "component" "tsx"'
+ * escapeFTSQuery('"my component"') // '"my component"'
  * ```
  */
 export function escapeFTSQuery(query: string): string {
-  // Trim whitespace
-  const trimmed = query.trim()
-  if (!trimmed) {
-    return ''
-  }
-
-  // Split into tokens on whitespace and path separators
-  const tokens = trimmed.split(/[\s\/\\]+/).filter(Boolean)
-  if (tokens.length === 0) {
-    return ''
-  }
-
-  // Wrap each token in quotes, escaping embedded quotes
-  return tokens
-    .map(token => {
-      // Remove special characters that could break FTS5
-      const cleaned = token.replace(FTS5_SPECIAL_CHARS, '')
-      if (!cleaned) {
-        return null
-      }
-      // Double any embedded quotes
-      const escaped = cleaned.replace(/"/g, '""')
-      return `"${escaped}"`
-    })
-    .filter(Boolean)
-    .join(' ')
+  return buildEscapedTokens(query).tokens.join(' ')
 }
 
 /**
@@ -195,15 +267,35 @@ export function escapeFTSQuery(query: string): string {
  * ```
  */
 export function buildPrefixQuery(query: string): string {
-  const escaped = escapeFTSQuery(query)
-  if (!escaped) {
+  const { tokens, lastIsPhrase } = buildEscapedTokens(query)
+  if (tokens.length === 0) {
     return ''
   }
+
+  if (lastIsPhrase) {
+    return tokens.join(' ')
+  }
+
+  const lastIndex = tokens.length - 1
+  tokens[lastIndex] = `${tokens[lastIndex]}*`
 
   // Add prefix matching to the last token
   // The escaped query has tokens like: "token1" "token2" "token3"
   // We want: "token1" "token2" "token3"*
-  return escaped + '*'
+  return tokens.join(' ')
+}
+
+// ============================================================================
+// LIKE Escaping
+// ============================================================================
+
+/**
+ * Escapes special characters for SQLite LIKE queries.
+ *
+ * In LIKE patterns, '%' and '_' are wildcards, and '\' is the escape character.
+ */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, match => `\\${match}`)
 }
 
 // ============================================================================
@@ -542,8 +634,8 @@ export function searchFiles(
 
     if (pathFilters.length > 0) {
       const clauses = pathFilters.map((filter, i) => {
-        params[`$filter${i}`] = filter + '%'
-        return `m.path LIKE $filter${i}`
+        params[`$filter${i}`] = escapeLikePattern(filter) + '%'
+        return `m.path LIKE $filter${i} ESCAPE '\\'`
       })
       pathClause = `AND (${clauses.join(' OR ')})`
     }
@@ -623,8 +715,8 @@ export function listFilesByExtension(
 
     if (pathFilters.length > 0) {
       const clauses = pathFilters.map((filter, i) => {
-        params[`$filter${i}`] = filter + '%'
-        return `m.path LIKE $filter${i}`
+        params[`$filter${i}`] = escapeLikePattern(filter) + '%'
+        return `m.path LIKE $filter${i} ESCAPE '\\'`
       })
       pathClause = `AND (${clauses.join(' OR ')})`
     }
@@ -690,8 +782,8 @@ export function listFiles(
 
     if (pathFilters.length > 0) {
       const clauses = pathFilters.map((filter, i) => {
-        params[`$filter${i}`] = filter + '%'
-        return `m.path LIKE $filter${i}`
+        params[`$filter${i}`] = escapeLikePattern(filter) + '%'
+        return `m.path LIKE $filter${i} ESCAPE '\\'`
       })
       pathClause = `AND (${clauses.join(' OR ')})`
     }

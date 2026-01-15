@@ -142,8 +142,13 @@ export function createServer(handler: RequestHandler, socketPath?: string): Daem
           }
 
           // Call the handler with the validated request
-          const response = await handler(parseResult.value)
-          return new Response(formatResponse(response))
+          try {
+            const response = await handler(parseResult.value)
+            return new Response(formatResponse(response))
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'handler error'
+            return new Response(formatResponse(errorResponse(parseResult.value.id, message)))
+          }
         },
       })
     },
