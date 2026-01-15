@@ -42,15 +42,6 @@ pickme index ~/Developer
 pickme index ~/.config
 ```
 
-### `pickme refresh [directory]`
-
-Refresh an existing index.
-
-```bash
-pickme refresh ~/Developer
-pickme refresh  # refreshes current directory
-```
-
 ### `pickme status`
 
 Show index status and statistics.

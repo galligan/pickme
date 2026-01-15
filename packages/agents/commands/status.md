@@ -18,7 +18,7 @@ allowed-tools: Bash(pickme *)
 Provide a quick assessment:
 
 - Healthy: active is yes, database exists, indexed roots have recent timestamps
-- Stale: last indexed looks old; suggest `pickme refresh`
+- Stale: last indexed looks old; suggest `pickme index`
 - Incomplete: missing roots or disabled entries
 - Disabled: active is no (suggest `pickme enable`)
 - Error: configuration issues (suggest /pickme:help)

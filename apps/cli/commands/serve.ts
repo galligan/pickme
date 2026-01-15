@@ -8,7 +8,11 @@
 
 import { parseArgs } from 'node:util'
 import { getConfigPath } from '../../../packages/core/src/config'
-import { createInitialState, type DaemonState, handleRequest } from '../../../packages/core/src/daemon/handlers'
+import {
+  createInitialState,
+  type DaemonState,
+  handleRequest,
+} from '../../../packages/core/src/daemon/handlers'
 import { createLifecycle, type LifecycleManager } from '../../../packages/core/src/daemon/lifecycle'
 import { createServer } from '../../../packages/core/src/daemon/server'
 import { getSocketPath } from '../../../packages/core/src/daemon/socket-path'
